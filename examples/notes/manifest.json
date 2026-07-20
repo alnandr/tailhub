@@ -1,0 +1,13 @@
+{
+  "app": "notes",
+  "name": "Tailnotes",
+  "description": "Example private notes app — a single-file PWA that stores notes as Tailhub artifacts.",
+  "collections": {
+    "notes": {
+      "maxBytes": 262144,
+      "historyKeep": 10,
+      "encryption": "optional"
+    }
+  },
+  "www": true
+}

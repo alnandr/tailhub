@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tailnotes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#eef0e7">
+<style>
+  :root {
+    --paper: #eef0e7;      /* sage-tinted pocket-notebook paper */
+    --card: #f7f8f2;
+    --ink: #262b20;
+    --faint: #79806d;
+    --rule: #d5d9c8;
+    --moss: #56714a;       /* actions + synced stamp */
+    --postmark: #b9553f;   /* unsynced / conflict stamp */
+    --serif: Charter, Georgia, Cambria, "Times New Roman", serif;
+    --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.55 var(--sans); min-height: 100vh;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 26px 18px 90px; }
+  header.top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  h1 { font: 700 26px var(--serif); margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--faint); font-size: 13px; }
+  .gear {
+    margin-left: auto; background: none; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 6px 12px; font: 13px var(--sans); color: var(--ink); cursor: pointer;
+  }
+  .gear:hover { border-color: var(--faint); }
+
+  .note-card {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 14px 16px; margin: 10px 0; cursor: pointer; position: relative;
+    width: 100%; text-align: left; font: inherit; color: inherit;
+  }
+  .note-card:hover, .note-card:focus-visible { border-color: var(--moss); outline: none; }
+  .note-card h3 { font: 600 17px var(--serif); margin: 0 0 3px; padding-right: 96px; }
+  .note-card p { margin: 0; color: var(--faint); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* The postmark — sync state stamped on each note */
+  .stamp {
+    position: absolute; top: 10px; right: 12px; transform: rotate(3deg);
+    border: 1.5px solid var(--moss); color: var(--moss); border-radius: 6px;
+    font: 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 7px; opacity: 0.85; background: transparent;
+  }
+  .stamp.warn { border-color: var(--postmark); color: var(--postmark); transform: rotate(-2deg); }
+
+  .new-note {
+    width: 100%; background: none; border: 1.5px dashed var(--rule); border-radius: 8px;
+    padding: 13px; color: var(--faint); font: 14px var(--sans); cursor: pointer; margin-top: 6px;
+  }
+  .new-note:hover { border-color: var(--moss); color: var(--moss); }
+
+  .editor input[type=text] {
+    width: 100%; font: 600 22px var(--serif); border: none; background: none;
+    color: var(--ink); padding: 4px 0; border-bottom: 1px solid var(--rule);
+  }
+  .editor textarea {
+    width: 100%; min-height: 46vh; border: none; background: none; resize: vertical;
+    font: 15.5px/1.65 var(--serif); color: var(--ink); padding: 12px 0; outline: none;
+  }
+  .editor input:focus, .editor textarea:focus { outline: none; border-color: var(--moss); }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .save {
+    background: var(--moss); color: #f5f7ef; border: none; border-radius: 6px;
+    padding: 9px 18px; font: 600 14px var(--sans); cursor: pointer;
+  }
+  .save:hover { filter: brightness(1.07); }
+  .plain { background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 8px 14px; font: 13px var(--sans); color: var(--ink); cursor: pointer; }
+  .plain:hover { border-color: var(--faint); }
+  .destroy { background: none; border: none; color: var(--postmark); font: 13px var(--sans); cursor: pointer; margin-left: auto; }
+  .destroy:hover { text-decoration: underline; }
+  .word { color: var(--faint); font: 12px var(--mono); }
+
+  .banner {
+    background: #f7e8e2; border: 1px solid #dcb5a8; border-radius: 8px;
+    padding: 13px 15px; margin: 12px 0; font-size: 14px;
+  }
+  .banner b { font-family: var(--serif); }
+  .banner .bar { margin-top: 10px; }
+  .status { font: 12.5px var(--mono); color: var(--faint); min-height: 1.3em; margin-top: 12px; }
+  .status.err { color: var(--postmark); }
+
+  .settings { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .settings label { display: block; font: 12px var(--sans); color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; margin: 12px 0 4px; }
+  .settings label:first-child { margin-top: 0; }
+  .settings input {
+    width: 100%; border: 1px solid var(--rule); border-radius: 6px; background: #fff;
+    padding: 8px 10px; font: 13px var(--mono); color: var(--ink);
+  }
+  .settings .hint { font-size: 12.5px; color: var(--faint); margin-top: 4px; }
+  .empty { color: var(--faint); text-align: center; padding: 40px 10px; font-family: var(--serif); font-style: italic; }
+  a { color: var(--moss); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script type="module">
+  import { TailhubError } from '/sdk/tailhub-client.js';
+  import { createBrowserSyncState, formatRelative } from '/sdk/browser.js';
+  import { sealPayload, openPayload } from '/sdk/crypto.js';
+
+  const sync = createBrowserSyncState('notes');
+  if (!sync.getHubUrl()) sync.setHubUrl(location.origin);
+  const app = document.getElementById('app');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+
+  const passKey = 'tailnotes-passphrase';
+  const getPass = () => sessionStorage.getItem(passKey) || '';
+
+  let notes = [];        // ArtifactMeta[] from the hub
+  let editing = null;    // { id, title, body, revision, encrypted }
+  let conflict = null;   // remote meta on 409
+
+  function client() { return sync.createClient(); }
+
+  function head(sub) {
+    return `<header class="top">
+      <h1>Tailnotes</h1><span class="sub">${esc(sub)}</span>
+      <button class="gear" id="gear">Settings</button>
+    </header>`;
+  }
+  function bindHead() {
+    document.getElementById('gear').addEventListener('click', renderSettings);
+  }
+  function setStatus(text, isError) {
+    const el = document.getElementById('status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'status' + (isError ? ' err' : '');
+  }
+
+  // ---- Views ----------------------------------------------------------------
+
+  function renderSettings(message) {
+    app.innerHTML = `${head('on your tailnet')}
+      <div class="settings">
+        <label>App token</label>
+        <input type="password" id="tok" value="${esc(sync.getToken())}" autocomplete="off">
+        <div class="hint">On the hub machine: <code>tailhub apptoken notes</code></div>
+        <label>Device name</label>
+        <input type="text" id="dev" value="${esc(sync.getDeviceName())}" placeholder="e.g. alans-phone">
+        <label>Note passphrase (optional)</label>
+        <input type="password" id="pass" value="${esc(getPass())}" autocomplete="off">
+        <div class="hint">With a passphrase, note text is sealed before it leaves this
+          device — the hub stores ciphertext. Titles stay readable so lists work.
+          Every device must use the same passphrase.</div>
+        <div class="bar">
+          <button class="save" id="ok">Done</button>
+        </div>
+        <div class="status ${typeof message === 'string' && message ? 'err' : ''}" id="status">${esc(typeof message === 'string' ? message : '')}</div>
+      </div>`;
+    bindHead();
+    document.getElementById('ok').addEventListener('click', () => {
+      sync.setToken(document.getElementById('tok').value);
+      sync.setDeviceName(document.getElementById('dev').value);
+      sessionStorage.setItem(passKey, document.getElementById('pass').value);
+      loadList();
+    });
+  }
+
+  async function loadList() {
+    if (!sync.getToken()) return renderSettings();
+    try {
+      notes = await client().list('notes');
+      sync.recordOk('list');
+      renderList();
+    } catch (err) {
+      if (err instanceof TailhubError && err.status === 401) {
+        renderSettings('That token was not accepted — check it on the hub.');
+      } else {
+        sync.recordError('list', err.message);
+        renderSettings(err.message);
+      }
+    }
+  }
+
+  function renderList() {
+    const cards = notes.map((n) => `
+      <button class="note-card" data-id="${esc(n.id)}">
+        <span class="stamp">r${n.revision} · synced</span>
+        <h3>${esc(n.title)}</h3>
+        <p>${esc(n.deviceName || '')} · ${esc(formatRelative(n.updatedAt) || n.updatedAt)}${n.encrypted ? ' · sealed' : ''}</p>
+      </button>`).join('');
+    const health = sync.getHealth();
+    app.innerHTML = `${head(health.lastOkAt ? 'synced ' + formatRelative(health.lastOkAt) : '')}
+      ${notes.length ? cards : '<div class="empty">A blank notebook. Write the first note.</div>'}
+      <button class="new-note" id="new">+ New note</button>
+      <div class="status" id="status"></div>`;
+    bindHead();
+    document.getElementById('new').addEventListener('click', () => {
+      editing = { id: crypto.randomUUID(), title: '', body: '', revision: 0 };
+      conflict = null;
+      renderEditor();
+    });
+    app.querySelectorAll('.note-card').forEach((el) =>
+      el.addEventListener('click', () => openNote(el.dataset.id)));
+  }
+
+  async function openNote(id) {
+    try {
+      const result = await client().pull('notes', id);
+      if (result.notModified) return;
+      const record = result.record;
+      let body = '';
+      try {
+        const payload = await openPayload(record, getPass());
+        body = payload && typeof payload === 'object' ? String(payload.body ?? '') : '';
+      } catch (err) {
+        renderSettings(err.message);
+        return;
+      }
+      editing = { id, title: record.title, body, revision: record.revision, encrypted: Boolean(record.encryption) };
+      conflict = null;
+      sync.setRevision('notes', id, record.revision);
+      renderEditor();
+    } catch (err) {
+      renderList();
+      setStatus(err.message, true);
+    }
+  }
+
+  function renderEditor() {
+    const conflictBanner = conflict ? `
+      <div class="banner">
+        <b>This note changed on another device.</b><br>
+        The hub has r${conflict.revision}${conflict.deviceName ? ' from ' + esc(conflict.deviceName) : ''}
+        (${esc(formatRelative(conflict.updatedAt) || conflict.updatedAt)}). Your editor is based on r${editing.revision}.
+        <div class="bar">
+          <button class="plain" id="theirs">Load theirs</button>
+          <button class="plain" id="mine">Keep mine (overwrite)</button>
+        </div>
+      </div>` : '';
+    app.innerHTML = `${head(editing.revision ? 'r' + editing.revision : 'new note')}
+      ${conflictBanner}
+      <div class="editor">
+        <input type="text" id="title" placeholder="Title" value="${esc(editing.title)}">
+        <textarea id="body" placeholder="Write…">${esc(editing.body)}</textarea>
+        <div class="bar">
+          <button class="save" id="save">Save to hub</button>
+          <button class="plain" id="close">Back</button>
+          <span class="word" id="count"></span>
+          ${editing.revision ? '<button class="destroy" id="del">Delete</button>' : ''}
+        </div>
+        <div class="status" id="status"></div>
+      </div>`;
+    bindHead();
+    const bodyEl = document.getElementById('body');
+    const count = () => {
+      const words = bodyEl.value.trim() ? bodyEl.value.trim().split(/\s+/).length : 0;
+      document.getElementById('count').textContent = words + ' words';
+    };
+    count();
+    bodyEl.addEventListener('input', count);
+    document.getElementById('close').addEventListener('click', loadList);
+    document.getElementById('save').addEventListener('click', () => saveNote(false));
+    if (conflict) {
+      document.getElementById('theirs').addEventListener('click', () => { conflict = null; openNote(editing.id); });
+      document.getElementById('mine').addEventListener('click', () => saveNote(true));
+    }
+    const del = document.getElementById('del');
+    if (del) del.addEventListener('click', async () => {
+      if (!confirm('Delete this note? The hub keeps its recent history restorable from the console.')) return;
+      try {
+        await client().remove('notes', editing.id, { baseRevision: editing.revision });
+        loadList();
+      } catch (err) { setStatus(err.message, true); }
+    });
+  }
+
+  async function saveNote(force) {
+    const title = document.getElementById('title').value.trim() || 'Untitled';
+    const body = document.getElementById('body').value;
+    setStatus('Saving…');
+    try {
+      const pass = getPass();
+      const sealed = pass ? await sealPayload({ body }, pass) : null;
+      const result = await client().push('notes', editing.id, {
+        title,
+        payload: sealed ? sealed.payload : { body },
+        encryption: sealed ? sealed.encryption : null,
+        baseRevision: editing.revision,
+        updatedAt: new Date().toISOString(),
+        force,
+      });
+      editing.title = title;
+      editing.body = body;
+      editing.revision = result.artifact.revision;
+      conflict = null;
+      sync.setRevision('notes', editing.id, result.artifact.revision);
+      sync.recordOk('push');
+      renderEditor();
+      setStatus('Saved · r' + result.artifact.revision);
+    } catch (err) {
+      if (err instanceof TailhubError && err.conflict && err.remote) {
+        conflict = err.remote;
+        renderEditor();
+      } else {
+        sync.recordError('push', err.message);
+        setStatus(err.message, true);
+      }
+    }
+  }
+
+  // ---- Boot -----------------------------------------------------------------
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => undefined);
+  }
+  loadList();
+</script>
+</body>
+</html>

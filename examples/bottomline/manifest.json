@@ -1,0 +1,13 @@
+{
+  "app": "bottomline",
+  "name": "Bottomline",
+  "description": "Local-first personal finance. Portfolios sync as artifacts; all parsing, forecasting, and Q&A stay in the browser.",
+  "collections": {
+    "portfolios": {
+      "maxBytes": 10485760,
+      "historyKeep": 20,
+      "encryption": "optional"
+    }
+  },
+  "www": false
+}

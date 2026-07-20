@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-test/
+*.tsbuildinfo
+
+# Hub runtime state written by ops scripts (never commit secrets or pids)
+scripts/.hub-pids
+scripts/.hub-pid
+scripts/hub-logs/
+scripts/hub-launch/
+
+.DS_Store
+Thumbs.db

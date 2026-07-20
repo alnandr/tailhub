@@ -1,0 +1,28 @@
+{
+  "name": "@tailhub/client",
+  "version": "0.1.0",
+  "description": "Universal client SDK for a Tailhub artifact sync hub — push, pull, revisions, conflicts, and optional end-to-end encryption.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./crypto": "./dist/crypto.js",
+    "./browser": "./dist/browser.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\""
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^22.10.0"
+  }
+}

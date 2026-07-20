@@ -1,0 +1,20 @@
+{
+  "name": "tailhub-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Tailhub — private apps for your tailnet. Self-hosted artifact sync for local-first apps on Tailscale.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/client",
+    "packages/hub"
+  ],
+  "scripts": {
+    "build": "npm run build -w @tailhub/client && npm run build -w tailhub",
+    "test": "npm run test -w @tailhub/client && npm run test -w tailhub",
+    "start": "node packages/hub/dist/cli.js start"
+  }
+}

@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tailhub console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230f1626'/%3E%3Ccircle cx='50' cy='50' r='16' fill='none' stroke='%23f2b23e' stroke-width='7'/%3E%3Ccircle cx='50' cy='50' r='4' fill='%2362d9a4'/%3E%3Cpath d='M50 34V16M50 84V66M34 50H16M84 50H66' stroke='%23f2b23e' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --ink: #0f1626;        /* indigo night — the machine room */
+    --panel: #151f36;
+    --panel-2: #1a2642;
+    --line: #2a3a5e;
+    --paper: #e9e5d8;      /* warm paper text on cold metal */
+    --dim: #8e97ad;
+    --amber: #f2b23e;      /* the appliance LED / identity */
+    --mint: #62d9a4;       /* health only */
+    --ember: #e06a55;      /* faults + destructive actions */
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font: 15px/1.55 var(--sans);
+    min-height: 100vh;
+  }
+  a { color: var(--amber); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 20px 80px; }
+
+  /* Faceplate — the front panel of the appliance */
+  .faceplate {
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #131c31 0%, var(--ink) 100%);
+  }
+  .faceplate-inner {
+    max-width: 900px; margin: 0 auto; padding: 22px 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .led {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #3a4763; flex: none;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.03);
+  }
+  .led.on {
+    background: var(--mint);
+    box-shadow: 0 0 8px 1px rgba(98,217,164,0.55);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  .led.fault { background: var(--ember); box-shadow: 0 0 8px 1px rgba(224,106,85,0.55); animation: none; }
+  @keyframes breathe { 50% { box-shadow: 0 0 3px 0 rgba(98,217,164,0.35); } }
+  @media (prefers-reduced-motion: reduce) { .led.on { animation: none; } }
+  .nameplate {
+    font: 700 16px var(--mono); letter-spacing: 0.22em; text-transform: uppercase;
+  }
+  .nameplate small { color: var(--dim); letter-spacing: 0.1em; font-weight: 400; margin-left: 10px; }
+  .facts { margin-left: auto; display: flex; gap: 18px; font: 12px var(--mono); color: var(--dim); }
+  .facts b { color: var(--paper); font-weight: 600; }
+
+  .crumbs { margin: 26px 0 4px; font: 12px var(--mono); color: var(--dim); letter-spacing: 0.06em; }
+  .crumbs a { color: var(--dim); }
+  .crumbs a:hover { color: var(--amber); }
+  .crumbs .here { color: var(--paper); }
+
+  h2 { font: 600 21px var(--mono); margin: 10px 0 18px; letter-spacing: 0.01em; }
+  .label {
+    font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--dim); margin-bottom: 6px;
+  }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 20px; margin: 16px 0;
+  }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .app-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px 18px; cursor: pointer; text-align: left; color: var(--paper);
+    font: inherit; transition: border-color 120ms;
+  }
+  .app-card:hover, .app-card:focus-visible { border-color: var(--amber); outline: none; }
+  .app-card h3 { margin: 0 0 4px; font: 600 16px var(--mono); }
+  .app-card p { margin: 0; color: var(--dim); font-size: 13px; }
+  .app-card .chips { margin-top: 10px; }
+
+  .chip {
+    display: inline-block; font: 11px var(--mono); letter-spacing: 0.05em;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+    margin: 0 6px 6px 0; color: var(--dim);
+  }
+  .chip.enc { border-color: #5a4a86; color: #b7a5e8; }
+  .chip.del { border-color: #6e4038; color: var(--ember); }
+  .chip.www { border-color: #2c5a4a; color: var(--mint); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th {
+    text-align: left; font: 11px var(--mono); text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--dim); font-weight: 500;
+    padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(42,58,94,0.45); vertical-align: top; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--panel-2); }
+  td.mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .dim { color: var(--dim); }
+  .num { text-align: right; font-family: var(--mono); }
+
+  input[type=password], input[type=text], textarea {
+    width: 100%; background: var(--ink); color: var(--paper);
+    border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px;
+    font: 13px var(--mono);
+  }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  textarea { min-height: 180px; resize: vertical; }
+
+  button.act {
+    background: var(--amber); color: #211803; border: none; border-radius: 6px;
+    padding: 9px 16px; font: 600 13px var(--sans); cursor: pointer;
+  }
+  button.act:hover { filter: brightness(1.08); }
+  button.quiet {
+    background: transparent; color: var(--paper); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 14px; font: 13px var(--sans); cursor: pointer;
+  }
+  button.quiet:hover { border-color: var(--dim); }
+  button.danger { background: transparent; color: var(--ember); border: 1px solid #6e4038; border-radius: 6px; padding: 8px 14px; font: 13px var(--sans); cursor: pointer; }
+  button.danger:hover { background: rgba(224,106,85,0.12); }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+  .status { font: 13px var(--mono); margin: 14px 0; min-height: 1.4em; }
+  .status.err { color: var(--ember); }
+  .status.ok { color: var(--mint); }
+
+  pre.payload {
+    background: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px; overflow: auto; max-height: 420px; font: 12.5px var(--mono);
+    margin: 0;
+  }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px 20px; margin: 6px 0 2px;
+  }
+  .meta-grid .label { margin-bottom: 2px; }
+  .meta-grid .val { font: 13px var(--mono); word-break: break-all; }
+
+  .empty { color: var(--dim); padding: 26px 8px; text-align: center; font-size: 14px; }
+  .toggle { font: 12.5px var(--sans); color: var(--dim); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  details.reg { margin-top: 22px; }
+  details.reg summary { cursor: pointer; color: var(--dim); font: 13px var(--mono); }
+  .hint { color: var(--dim); font-size: 13px; margin: 6px 0 0; }
+  .hint code { font-family: var(--mono); color: var(--paper); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header class="faceplate">
+  <div class="faceplate-inner">
+    <span class="led" id="led"></span>
+    <span class="nameplate">Tailhub <small id="version"></small></span>
+    <span class="facts" id="facts"></span>
+  </div>
+</header>
+<main class="wrap" id="main"></main>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (sel, el) => (el || document).querySelector(sel);
+  const main = $('#main');
+  const state = {
+    token: sessionStorage.getItem('tailhub-console-token') || '',
+    hub: null,
+    apps: [],
+    includeDeleted: false,
+  };
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+
+  const fmtBytes = (n) => {
+    if (!Number.isFinite(n)) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  };
+  const fmtTime = (iso) => {
+    if (!iso) return '—';
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return iso;
+    const sec = Math.round((Date.now() - t) / 1000);
+    if (sec < 45) return 'just now';
+    if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + 'm ago';
+    if (sec < 86400) return Math.round(sec / 3600) + 'h ago';
+    if (sec < 14 * 86400) return Math.round(sec / 86400) + 'd ago';
+    return new Date(t).toISOString().slice(0, 10);
+  };
+
+  async function api(path, init) {
+    const headers = Object.assign({ Authorization: 'Bearer ' + state.token }, (init && init.headers) || {});
+    if (init && init.body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(path, Object.assign({}, init, { headers }));
+    const text = await res.text();
+    let data = null;
+    if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+    if (!res.ok) {
+      const msg = data && data.message ? data.message : data && data.error ? data.error : 'Request failed (' + res.status + ')';
+      const err = new Error(msg); err.status = res.status; err.body = data; throw err;
+    }
+    return data;
+  }
+
+  function setLed(mode) {
+    const led = $('#led');
+    led.className = 'led' + (mode === 'on' ? ' on' : mode === 'fault' ? ' fault' : '');
+  }
+  function setFacts() {
+    const el = $('#facts');
+    if (!state.hub) { el.innerHTML = ''; return; }
+    el.innerHTML =
+      'apps <b>' + state.hub.apps + '</b>' +
+      '<span>artifacts <b>' + state.hub.artifacts + '</b></span>' +
+      '<span>up <b>' + Math.floor(state.hub.uptimeSeconds / 3600) + 'h' +
+      Math.floor((state.hub.uptimeSeconds % 3600) / 60) + 'm</b></span>';
+    $('#version').textContent = 'v' + state.hub.version;
+  }
+
+  // ---- Views ---------------------------------------------------------------
+
+  function viewConnect(message) {
+    setLed('off');
+    main.innerHTML = `
+      <div class="crumbs">console</div>
+      <h2>Connect to this hub</h2>
+      <div class="card">
+        <div class="label">Admin token</div>
+        <input type="password" id="tok" autocomplete="off"
+               placeholder="paste the hub admin token" value="${esc(state.token)}">
+        <p class="hint">The token lives in <code>admin-token.txt</code> in the hub data
+        directory, or run <code>tailhub token</code> on the hub machine. It stays in this
+        browser tab only.</p>
+        <div class="btnrow"><button class="act" id="go">Connect</button></div>
+        <div class="status ${message ? 'err' : ''}" id="st">${esc(message || '')}</div>
+      </div>`;
+    const submit = () => {
+      state.token = $('#tok').value.trim();
+      sessionStorage.setItem('tailhub-console-token', state.token);
+      loadHub();
+    };
+    $('#go').addEventListener('click', submit);
+    $('#tok').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    $('#tok').focus();
+  }
+
+  async function loadHub() {
+    try {
+      state.hub = await api('/v1/hub');
+      state.apps = (await api('/v1/apps')).apps;
+      setLed('on'); setFacts();
+      viewApps();
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) viewConnect('That token was not accepted.');
+      else { setLed('fault'); viewConnect('Could not reach the hub: ' + err.message); }
+    }
+  }
+
+  function viewApps() {
+    const cards = state.apps.map((app) => `
+      <button class="app-card" data-app="${esc(app.app)}">
+        <h3>${esc(app.name || app.app)}</h3>
+        <p>${esc(app.description || 'No description.')}</p>
+        <div class="chips">
+          ${Object.keys(app.collections).map((c) => '<span class="chip">' + esc(c) + '</span>').join('')}
+          ${app.www ? '<span class="chip www">hosts app files</span>' : ''}
+          ${app.tokenCount ? '<span class="chip">' + app.tokenCount + ' app token' + (app.tokenCount > 1 ? 's' : '') + '</span>' : ''}
+        </div>
+      </button>`).join('');
+
+    main.innerHTML = `
+      <div class="crumbs"><span class="here">apps</span></div>
+      <h2>Registered apps</h2>
+      ${state.apps.length ? '<div class="grid">' + cards + '</div>'
+        : '<div class="card empty">No apps registered yet. Register a manifest below to give an app a home on this hub.</div>'}
+      <details class="reg">
+        <summary>Register or update an app manifest</summary>
+        <div class="card">
+          <div class="label">Manifest JSON</div>
+          <textarea id="manifest" spellcheck="false">{
+  "app": "notes",
+  "name": "Tailnotes",
+  "description": "Example private notes app",
+  "collections": { "notes": { "historyKeep": 10, "encryption": "optional" } },
+  "www": false
+}</textarea>
+          <div class="btnrow"><button class="act" id="reg">Register app</button></div>
+          <div class="status" id="regst"></div>
+        </div>
+      </details>`;
+
+    main.querySelectorAll('.app-card').forEach((el) =>
+      el.addEventListener('click', () => viewApp(el.dataset.app)));
+    $('#reg').addEventListener('click', async () => {
+      const st = $('#regst'); st.className = 'status';
+      let body;
+      try { body = JSON.parse($('#manifest').value); }
+      catch { st.className = 'status err'; st.textContent = 'That is not valid JSON.'; return; }
+      try {
+        await api('/v1/apps/' + encodeURIComponent(body.app || ''), { method: 'PUT', body: JSON.stringify(body) });
+        st.className = 'status ok'; st.textContent = 'Registered "' + body.app + '".';
+        state.apps = (await api('/v1/apps')).apps;
+        state.hub = await api('/v1/hub'); setFacts();
+        viewApps();
+      } catch (err) { st.className = 'status err'; st.textContent = err.message; }
+    });
+  }
+
+  async function viewApp(appName) {
+    const app = state.apps.find((a) => a.app === appName);
+    if (!app) return viewApps();
+    main.innerHTML = `
+      <div class="crumbs"><a href="#" id="home">apps</a> / <span class="here">${esc(appName)}</span></div>
+      <h2>${esc(app.name || appName)}</h2>
+      <label class="toggle"><input type="checkbox" id="show-del" ${state.includeDeleted ? 'checked' : ''}>
+        show deleted artifacts</label>
+      <div id="collections"><div class="empty">Loading…</div></div>`;
+    $('#home').addEventListener('click', (e) => { e.preventDefault(); viewApps(); });
+    $('#show-del').addEventListener('change', (e) => {
+      state.includeDeleted = e.target.checked;
+      viewApp(appName);
+    });
+
+    const holder = $('#collections');
+    const sections = [];
+    for (const collection of Object.keys(app.collections)) {
+      try {
+        const q = state.includeDeleted ? '?includeDeleted=1' : '';
+        const { artifacts } = await api('/v1/apps/' + encodeURIComponent(appName) + '/' + encodeURIComponent(collection) + q);
+        const rows = artifacts.map((a) => `
+          <tr class="row" data-c="${esc(collection)}" data-id="${esc(a.id)}">
+            <td>${esc(a.title)}
+              ${a.encrypted ? '<span class="chip enc">encrypted</span>' : ''}
+              ${a.deleted ? '<span class="chip del">deleted</span>' : ''}
+            </td>
+            <td class="mono dim">${esc(a.id)}</td>
+            <td class="num">r${a.revision}</td>
+            <td class="dim">${fmtTime(a.updatedAt)}</td>
+            <td class="dim">${esc(a.deviceName || (a.deviceId || '').slice(0, 8) || '—')}</td>
+            <td class="num dim">${fmtBytes(a.bytes)}</td>
+          </tr>`).join('');
+        sections.push(`
+          <div class="card">
+            <div class="label">${esc(collection)} · ${artifacts.length}</div>
+            ${artifacts.length ? `<table>
+              <thead><tr><th>Title</th><th>Id</th><th>Rev</th><th>Updated</th><th>Device</th><th>Size</th></tr></thead>
+              <tbody>${rows}</tbody></table>`
+            : '<div class="empty">Nothing synced to this collection yet.</div>'}
+          </div>`);
+      } catch (err) {
+        sections.push('<div class="card"><div class="label">' + esc(collection) + '</div><div class="status err">' + esc(err.message) + '</div></div>');
+      }
+    }
+    holder.innerHTML = sections.join('');
+    holder.querySelectorAll('tr.row').forEach((tr) =>
+      tr.addEventListener('click', () => viewArtifact(appName, tr.dataset.c, tr.dataset.id)));
+  }
+
+  async function viewArtifact(appName, collection, id) {
+    const base = '/v1/apps/' + encodeURIComponent(appName) + '/' + encodeURIComponent(collection) + '/' + encodeURIComponent(id);
+    let record = null, gone = null;
+    try {
+      record = await api(base);
+    } catch (err) {
+      if (err.status === 410 && err.body && err.body.artifact) gone = err.body.artifact;
+      else {
+        main.innerHTML = '<div class="status err">' + esc(err.message) + '</div>';
+        return;
+      }
+    }
+    const meta = record || gone;
+    let history = [];
+    try { history = (await api(base + '/history')).revisions; } catch { /* optional */ }
+
+    const metaRow = (label, value) =>
+      '<div><div class="label">' + label + '</div><div class="val">' + value + '</div></div>';
+    const payloadBlock = record
+      ? (record.encryption
+        ? '<div class="card"><div class="label">Payload</div><div class="empty">End-to-end encrypted — the hub stores ciphertext only.<br>Open it in the app that owns it.</div></div>'
+        : '<div class="card"><div class="label">Payload</div><pre class="payload" id="payload"></pre></div>')
+      : '<div class="card"><div class="empty">This artifact is deleted. Restore a revision below to bring it back.</div></div>';
+
+    const histRows = history.map((h) => `
+      <tr>
+        <td class="num">r${h.revision}</td>
+        <td>${esc(h.title)} ${h.deleted ? '<span class="chip del">deleted</span>' : ''} ${h.encrypted ? '<span class="chip enc">encrypted</span>' : ''}</td>
+        <td class="dim">${fmtTime(h.receivedAt)}</td>
+        <td class="dim">${esc(h.deviceName || (h.deviceId || '').slice(0, 8) || '—')}</td>
+        <td class="num dim">${fmtBytes(h.bytes)}</td>
+        <td>${!h.deleted && h.revision !== meta.revision ? '<button class="quiet" data-restore="' + h.revision + '">Restore</button>' : ''}</td>
+      </tr>`).join('');
+
+    main.innerHTML = `
+      <div class="crumbs"><a href="#" id="home">apps</a> /
+        <a href="#" id="back">${esc(appName)}</a> / <span class="here">${esc(collection)}/${esc(id)}</span></div>
+      <h2>${esc(meta.title)}</h2>
+      <div class="card"><div class="meta-grid">
+        ${metaRow('Revision', 'r' + meta.revision)}
+        ${metaRow('Updated', esc(meta.updatedAt || '—'))}
+        ${metaRow('Received', esc(meta.receivedAt || '—'))}
+        ${metaRow('Device', esc(meta.deviceName || meta.deviceId || '—'))}
+        ${meta.tailscaleUser ? metaRow('Tailscale user', esc(meta.tailscaleUser)) : ''}
+        ${metaRow('Size', fmtBytes(meta.bytes))}
+        ${metaRow('Hash', '<span class="dim">' + esc((meta.hash || '—').slice(0, 23)) + '</span>')}
+      </div></div>
+      ${payloadBlock}
+      <div class="card">
+        <div class="label">History · ${history.length} kept</div>
+        ${history.length ? '<table><thead><tr><th>Rev</th><th>Title</th><th>Received</th><th>Device</th><th>Size</th><th></th></tr></thead><tbody>' + histRows + '</tbody></table>'
+          : '<div class="empty">No retained history for this artifact.</div>'}
+      </div>
+      <div class="btnrow">
+        ${record ? '<button class="quiet" id="dl">Download JSON</button><button class="danger" id="del">Delete artifact</button>' : ''}
+      </div>
+      <div class="status" id="st"></div>`;
+
+    if (record && !record.encryption) {
+      $('#payload').textContent = JSON.stringify(record.payload, null, 2);
+    }
+    $('#home').addEventListener('click', (e) => { e.preventDefault(); viewApps(); });
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); viewApp(appName); });
+
+    if (record) {
+      $('#dl').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = appName + '-' + collection + '-' + id + '-r' + record.revision + '.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+      $('#del').addEventListener('click', async () => {
+        if (!confirm('Delete "' + meta.title + '"? A tombstone revision is written; retained history stays restorable.')) return;
+        try {
+          await api(base + '?baseRevision=' + meta.revision, { method: 'DELETE' });
+          viewApp(appName);
+        } catch (err) { const st = $('#st'); st.className = 'status err'; st.textContent = err.message; }
+      });
+    }
+    main.querySelectorAll('[data-restore]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        try {
+          const old = await api(base + '/history/' + btn.dataset.restore);
+          await api(base, {
+            method: 'PUT',
+            body: JSON.stringify({
+              title: old.title, payload: old.payload, encryption: old.encryption,
+              baseRevision: 0, force: true,
+            }),
+          });
+          viewArtifact(appName, collection, id);
+        } catch (err) { const st = $('#st'); st.className = 'status err'; st.textContent = err.message; }
+      }));
+  }
+
+  // ---- Boot ----------------------------------------------------------------
+  if (state.token) loadHub();
+  else viewConnect();
+})();
+</script>
+</body>
+</html>

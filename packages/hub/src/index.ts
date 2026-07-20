@@ -25,7 +25,13 @@ export {
   saveManifest,
   validateManifest,
 } from './manifests.js';
-export type { AppManifest, CollectionPolicy, EncryptionPolicy, PublicManifest } from './manifests.js';
+export type {
+  AppKind,
+  AppManifest,
+  CollectionPolicy,
+  EncryptionPolicy,
+  PublicManifest,
+} from './manifests.js';
 export { authenticate, extractToken, sha256Hex } from './auth.js';
 export {
   DEFAULT_PORT,

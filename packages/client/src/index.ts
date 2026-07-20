@@ -71,6 +71,8 @@ export type AppManifest = {
   tokens?: string[];
   /** Serve static files for this app from the hub at /apps/<app>/. */
   www?: boolean;
+  /** 'app' (default) is launchable when hosted; 'service' is background-only. */
+  kind?: 'app' | 'service';
 };
 
 export type PublicManifest = {
@@ -79,6 +81,7 @@ export type PublicManifest = {
   description?: string;
   collections: Record<string, CollectionPolicy>;
   www: boolean;
+  kind: 'app' | 'service';
   tokenCount: number;
 };
 

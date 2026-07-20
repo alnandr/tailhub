@@ -48,6 +48,10 @@ Top-level:
   stored; mint one with `tailhub apptoken <app>`.
 - `www` — serve static files from `<dataDir>/apps/<app>/www/` at
   `/apps/<app>/` so the hub hosts the PWA itself.
+- `kind` — `"app"` (default) or `"service"`. Apps that host files get a
+  **Launch** button in the console; services are background/invocable
+  integrations (sync targets, webhooks, headless tools) and are never offered
+  for launch, even when they host files.
 
 Removing a manifest (`DELETE /v1/apps/<app>`) stops traffic for the app but
 keeps its stored artifacts on disk.

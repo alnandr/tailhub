@@ -145,6 +145,27 @@ describe('app registration', () => {
     assert.equal(body.app.tokens, undefined);
   });
 
+  it('classifies apps vs background services via kind', async () => {
+    const bad = await jfetch('/v1/apps/svc', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'svc', kind: 'daemon', collections: { data: {} } }),
+    });
+    assert.equal(bad.status, 400);
+
+    const ok = await jfetch('/v1/apps/svc', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'svc', kind: 'service', www: true, collections: { data: {} } }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.app.kind, 'service');
+
+    // Unset kind defaults to "app".
+    const notes = await jfetch('/v1/apps/notes', { token: ADMIN });
+    assert.equal(notes.body.kind, 'app');
+  });
+
   it('scopes app tokens to their app', async () => {
     // App token works on its own app's routes...
     const ok = await jfetch('/v1/apps/notes', { token: APP_TOKEN });

@@ -18,6 +18,14 @@ import { APP_PATTERN, COLLECTION_PATTERN, RESERVED_COLLECTIONS } from './ids.js'
 
 export type EncryptionPolicy = 'none' | 'optional' | 'required';
 
+/**
+ * 'app' — an end-user app; combined with `www: true` the console offers to
+ * launch it. 'service' — a background/invocable integration (sync targets,
+ * webhooks, headless tools) that is never offered for launch, even when it
+ * hosts files.
+ */
+export type AppKind = 'app' | 'service';
+
 export type CollectionPolicy = {
   maxBytes?: number;
   historyKeep?: number;
@@ -33,6 +41,7 @@ export type AppManifest = {
   tokens?: string[];
   /** Serve static files from <dataDir>/apps/<app>/www at /apps/<app>/. */
   www?: boolean;
+  kind?: AppKind;
 };
 
 /** Manifest view returned by the API — token digests are never echoed. */
@@ -42,6 +51,7 @@ export type PublicManifest = {
   description?: string;
   collections: Record<string, CollectionPolicy>;
   www: boolean;
+  kind: AppKind;
   tokenCount: number;
 };
 
@@ -178,6 +188,13 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
     manifest.www = raw.www;
   }
 
+  if (raw.kind !== undefined) {
+    if (raw.kind !== 'app' && raw.kind !== 'service') {
+      return invalid('Manifest "kind" must be "app" or "service".');
+    }
+    manifest.kind = raw.kind;
+  }
+
   return { ok: true, manifest };
 }
 
@@ -246,6 +263,7 @@ export function publicManifest(manifest: AppManifest): PublicManifest {
     description: manifest.description,
     collections: manifest.collections,
     www: manifest.www === true,
+    kind: manifest.kind ?? 'app',
     tokenCount: manifest.tokens?.length ?? 0,
   };
 }

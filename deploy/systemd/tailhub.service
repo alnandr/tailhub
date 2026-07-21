@@ -1,0 +1,20 @@
+# Tailhub user service. Installed by scripts/install-hub-startup.sh into
+# ~/.config/systemd/user/tailhub.service — the installer replaces @EXEC_START@
+# with the resolved command. To survive logout, enable lingering once:
+#   loginctl enable-linger $USER
+
+[Unit]
+Description=Tailhub — private apps for your tailnet
+Documentation=https://github.com/alnandr/tailhub
+After=network-online.target
+
+[Service]
+ExecStart=@EXEC_START@
+Restart=on-failure
+RestartSec=3
+# Uncomment to override defaults (see `tailhub help`):
+# Environment=TAILHUB_PORT=4747
+# Environment=TAILHUB_DATA_DIR=%h/.tailhub
+
+[Install]
+WantedBy=default.target

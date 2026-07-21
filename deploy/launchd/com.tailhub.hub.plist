@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tailhub launchd agent. Installed by scripts/install-hub-startup.sh into
+     ~/Library/LaunchAgents/com.tailhub.hub.plist — the installer replaces
+     @NODE@ and @CLI@ with resolved absolute paths. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tailhub.hub</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>@CLI@</string>
+    <string>start</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/tailhub.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/tailhub.err.log</string>
+</dict>
+</plist>

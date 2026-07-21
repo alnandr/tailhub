@@ -9,5 +9,8 @@ scripts/.hub-pid
 scripts/hub-logs/
 scripts/hub-launch/
 
+# Internal planning documents — not part of the public repository
+STRATEGY.md
+
 .DS_Store
 Thumbs.db

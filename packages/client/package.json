@@ -4,6 +4,31 @@
   "description": "Universal client SDK for a Tailhub artifact sync hub — push, pull, revisions, conflicts, and optional end-to-end encryption.",
   "type": "module",
   "license": "MIT",
+  "author": "Alan Garcia",
+  "homepage": "https://github.com/alnandr/tailhub#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alnandr/tailhub.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/alnandr/tailhub/issues"
+  },
+  "keywords": [
+    "tailscale",
+    "tailnet",
+    "sync",
+    "local-first",
+    "offline-first",
+    "sdk",
+    "client",
+    "e2e-encryption"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "sideEffects": false,
   "engines": {
     "node": ">=20"
   },
@@ -19,7 +44,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

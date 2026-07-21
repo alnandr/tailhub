@@ -1,0 +1,44 @@
+# Tailhub + Tailscale sidecar.
+#
+# The hub shares the Tailscale container's network namespace and binds
+# loopback, so it is reachable ONLY through `tailscale serve` on your tailnet
+# — the same security model as the bare-metal deployment (see docs/security.md).
+#
+#   1. Create an auth key (https://login.tailscale.com/admin/settings/keys)
+#   2. TS_AUTHKEY=tskey-auth-... docker compose up -d
+#   3. Open https://tailhub.<your-tailnet>.ts.net/
+#
+# The hub's admin token is printed on first start: `docker compose logs tailhub`
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: tailhub # becomes the MagicDNS name
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/tailscale-serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale-serve.json:/config/tailscale-serve.json:ro
+    restart: unless-stopped
+
+  tailhub:
+    image: ghcr.io/alnandr/tailhub:latest
+    # ...or build from a checkout instead:
+    # build:
+    #   context: ..
+    network_mode: service:tailscale
+    environment:
+      - TAILHUB_HOST=127.0.0.1 # loopback inside the shared netns; serve proxies to it
+      - TAILHUB_TRUST_TAILSCALE_HEADERS=1 # safe here: only serve can reach the hub
+    volumes:
+      - tailhub-data:/data
+    depends_on:
+      - tailscale
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:
+  tailhub-data:

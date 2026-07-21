@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [20, 22]
     runs-on: ${{ matrix.os }}
     steps:
@@ -19,5 +19,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
+      - run: node scripts/check-versions.mjs
       - run: npm run build
       - run: npm test
+      - name: Verify publish contents
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm pack --dry-run -w @tailhub/client -w tailhub

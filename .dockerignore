@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+packages/*/node_modules
+packages/*/dist
+packages/*/dist-test
+docs
+examples
+deploy
+scripts
+*.md
+Dockerfile
+.dockerignore

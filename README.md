@@ -1,8 +1,16 @@
 # Tailhub
 
+[![CI](https://github.com/alnandr/tailhub/actions/workflows/ci.yml/badge.svg)](https://github.com/alnandr/tailhub/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/tailhub)](https://www.npmjs.com/package/tailhub)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Private apps for your tailnet.** Tailhub turns any machine on your Tailscale
 network into a backup and sync hub for local-first apps — apps whose data
 lives on your devices, not in a vendor's cloud.
+
+**New: [the Tailhub whitepaper](WHITEPAPER.md)** — why personal networks
+need a data layer, the artifact model, and what a first-class "private apps"
+platform could look like.
 
 A "private app" is a PWA or native app that stores its data locally (IndexedDB,
 SQLite, files) and syncs it to a **hub you own** over your tailnet: encrypted
@@ -73,12 +81,25 @@ TypeScript): auditable in one sitting, installable anywhere Node 20+ runs.
 
 ## Quick start
 
+**npm** (Node ≥ 20; first publish pending — tag `v0.1.0` ships it, see
+[RELEASING.md](RELEASING.md)):
+
 ```bash
-npm install && npm run build
-node packages/hub/dist/cli.js start
+npm install -g tailhub    # or one-off: npx tailhub
+tailhub start
 #   tailhub v0.1.0
 #   Listening: http://127.0.0.1:4747
 #   Admin token (generated now, shown once — also saved to the token file): ...
+```
+
+**Docker** — including a Tailscale-sidecar compose file that keeps the hub
+reachable only from your tailnet: see [docs/docker.md](docs/docker.md).
+
+**From source**:
+
+```bash
+npm install && npm run build
+node packages/hub/dist/cli.js start
 ```
 
 Expose it to every device you own (once, with [Tailscale](https://tailscale.com)
@@ -93,12 +114,14 @@ and try the bundled example:
 
 ```bash
 # register the example notes app + host its files (see examples/notes/README.md)
-node packages/hub/dist/cli.js apptoken notes   # scoped token for your devices
+tailhub apptoken notes   # scoped token for your devices
 ```
 
-On Windows, `scripts/start-hub.ps1`, `setup-tailscale-https.ps1`, and
-`install-hub-startup.ps1` handle background running, HTTPS, and start-at-logon;
-`scripts/start-hub.sh` covers macOS/Linux.
+**Run it at login**: `scripts/install-hub-startup.sh` installs a launchd
+agent (macOS) or systemd user unit (Linux); on Windows,
+`scripts/install-hub-startup.ps1` registers a Scheduled Task, with
+`start-hub.ps1` / `setup-tailscale-https.ps1` handling background running
+and HTTPS.
 
 | Console | Example app (Tailnotes) |
 |---|---|
@@ -135,21 +158,35 @@ health). `examples/notes` is a complete working app in one HTML file.
 
 ## Documentation
 
+- [**The Tailhub whitepaper**](WHITEPAPER.md)
 - [Artifact model & manifests](docs/artifacts.md)
 - [HTTP API reference](docs/api.md)
 - [Security model](docs/security.md)
-- [Tailscale integration & roadmap](docs/tailscale-integration.md)
+- [Running in Docker](docs/docker.md)
+- [Tailscale integration](docs/tailscale-integration.md)
+- [Roadmap & sustainability](docs/roadmap.md)
 - [Migrating Bottomline](docs/migrating-bottomline.md)
 
 ## Status & roadmap
 
-v0.1 — extracted, generalized, tested (29 tests + browser E2E), running the
-patterns proven in Bottomline. Not yet published to npm.
+v0.1 — extracted, generalized, and covered by an automated test suite
+(conflict handling, tombstones, auth scoping, encryption policy, path
+traversal; CI on Linux/macOS/Windows × Node 20/22), running the patterns
+proven in Bottomline.
 
-Planned: change notifications (SSE) instead of polling · replaying tombstones
-through bundle import · per-user access via Tailscale identity headers ·
+Planned next: change notifications (SSE) instead of polling · replaying
+tombstones through bundle import · per-user access via Tailscale identity ·
 `tsnet` embedding so the hub joins the tailnet as its own node · Swift/Kotlin
-client kits · packaged installers.
+client kits — the full list lives in [docs/roadmap.md](docs/roadmap.md).
+
+## Sustainability
+
+Everything in this repository is MIT and **stays free forever** — features
+never move behind a paywall. The project plans to sustain itself with a
+future paid **Tailhub Pro** tier of team-oriented additions (roles/SSO on
+Tailscale identity, audit log, quotas & metrics, multi-hub replication,
+extended retention, priority support). The full pledge and the free/paid
+line: [docs/roadmap.md](docs/roadmap.md).
 
 Tailhub is an independent open-source project, not affiliated with or endorsed
 by Tailscale Inc. — built in the hope that "private apps on your tailnet"

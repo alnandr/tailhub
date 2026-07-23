@@ -54,6 +54,11 @@ New-Item -ItemType Directory -Force -Path $logDir, $launchDir, $DataDir | Out-Nu
 # into them; new files created inside inherit the owner-only ACE.
 Set-OwnerOnlyAcl -Path $launchDir
 Set-OwnerOnlyAcl -Path $logDir
+# The data dir holds the admin token and every stored artifact. It also needs an
+# inheritable owner-only ACE because the hub — not this script — creates
+# admin-token.txt: Node's mode 0o600 only sets the read-only attribute on
+# Windows, so without this the token file inherits whatever the profile grants.
+Set-OwnerOnlyAcl -Path $DataDir
 
 if (-not $SkipBuild) {
   Write-Host 'Building Tailhub (client SDK + hub)...' -ForegroundColor Cyan
@@ -89,7 +94,9 @@ if ($Token -and -not (Test-Path $tokenFile)) {
   Write-Host "Saved admin token to $tokenFile for future starts." -ForegroundColor Green
 }
 # The admin token file is a plaintext secret — mirror the Node side's 0600 with
-# an owner-only NTFS ACL (also repairs a file left world-readable by an older run).
+# an owner-only NTFS ACL (also repairs a file left world-readable by an older
+# run). Only covers a token file that already exists; the hub-generated case is
+# handled after startup below.
 Set-OwnerOnlyAcl -Path $tokenFile
 
 $outLog = Join-Path $logDir 'hub.out.log'
@@ -160,6 +167,12 @@ for ($i = 0; $i -lt 50; $i++) {
     if ($r.status -eq 'ok') { $ok = $true; break }
   } catch { }
 }
+
+# Re-assert owner-only on the token file now that the hub has started: when no
+# token was supplied the hub generates one and writes it itself, so the earlier
+# call above saw no file and did nothing. Without this the freshly generated
+# token — the exact first-run path — is left readable per the inherited ACL.
+Set-OwnerOnlyAcl -Path $tokenFile
 
 $hubPid = $null
 $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1

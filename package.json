@@ -13,6 +13,7 @@
     "packages/hub"
   ],
   "scripts": {
+    "prepare": "npm run build && npm rebuild",
     "build": "npm run build -w @tailhub/client && npm run build -w tailhub",
     "test": "npm run test -w @tailhub/client && npm run test -w tailhub",
     "start": "node packages/hub/dist/cli.js start",

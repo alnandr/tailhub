@@ -7,7 +7,10 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 COPY packages/client/package.json packages/client/
 COPY packages/hub/package.json packages/hub/
-RUN npm ci
+# --ignore-scripts: only the manifests exist at this layer, so the root
+# "prepare" build would fail here. The real build runs below, once the sources
+# are copied in — this layer just resolves dependencies (and stays cacheable).
+RUN npm ci --ignore-scripts
 COPY tsconfig.base.json ./
 COPY packages ./packages
 RUN npm run build

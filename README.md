@@ -98,9 +98,14 @@ reachable only from your tailnet: see [docs/docker.md](docs/docker.md).
 **From source**:
 
 ```bash
-npm install && npm run build
-node packages/hub/dist/cli.js start
+npm install       # installs, builds, and links the `tailhub` command
+npx tailhub start
 ```
+
+`npm install` builds the workspace on its own, so a fresh clone has a working
+`tailhub` command without a separate build step. To put it on your PATH as a
+plain `tailhub`, run `npm link` from `packages/hub` (undo with
+`npm rm -g tailhub`).
 
 Expose it to every device you own (once, with [Tailscale](https://tailscale.com)
 installed and MagicDNS on):

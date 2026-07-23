@@ -14,9 +14,16 @@ personal deployment: one operator, a handful of devices, a private network.
 2. **Tokens gate every data route.** Even inside the tailnet, all `/v1/*`
    routes require a bearer token — a shared laptop on your network can load
    the console page but sees no data without one.
-3. **Apps are isolated from each other.** App tokens are scoped to one app's
-   namespace. Manifests store only SHA-256 digests of tokens; all comparisons
-   are digest-vs-digest via `crypto.timingSafeEqual`.
+3. **Apps are isolated from each other *on the hub*.** App tokens are scoped to
+   one app's namespace. Manifests store only SHA-256 digests of tokens; all
+   comparisons are digest-vs-digest via `crypto.timingSafeEqual`. This scoping
+   is server-side: it limits what a token can *do*, not who can *read* it in a
+   browser. Apps the hub hosts are all served from one origin (`/apps/*`) and
+   the browser SDK keeps each app's token in `localStorage`, which has no
+   per-key isolation within an origin — so a co-hosted app (or an XSS in one)
+   can read another co-hosted app's token. Give untrusted apps their own origin
+   rather than co-hosting them; do not treat same-origin co-hosting as a
+   security boundary.
 4. **The hub machine is trusted.** Artifacts are plaintext JSON on its disk
    unless the app seals them. Full-disk encryption and disk backups of
    `~/.tailhub` are the operator's job — the same posture Bottomline
@@ -28,7 +35,7 @@ personal deployment: one operator, a handful of devices, a private network.
 |---|---|
 | Tailscale (the company) | Coordination metadata only — never payloads (WireGuard is end-to-end between your nodes; Serve terminates TLS **on your own machine**). |
 | Hub disk | Artifact metadata + payloads; ciphertext only where apps seal payloads. |
-| Another app on the same hub | Nothing (scoped tokens). |
+| Another app on the same hub | Server-side, nothing — a token is scoped to its own app's namespace. But apps **co-hosted on the same origin** (`/apps/*`) share `localStorage`, so a co-hosted app can read another's stored token in the browser; isolate untrusted apps by origin. |
 | A tailnet device without a token | `/health`, the console shell, hosted app shells (`/apps/*` static files are public-on-tailnet by design — PWA shells must load before login; never put secrets in static files). |
 
 ## End-to-end encryption
@@ -56,8 +63,13 @@ identity is attribution, not authorization — authorization is tokens.
   path containment (covered by tests, including encoded and backslash forms).
 - Atomic writes; corrupt files are quarantined, never deleted.
 - Request logs contain method/path/status only — never tokens or payloads.
-- The admin token file is written with mode `0600` (effective on POSIX;
-  on Windows, protect the data dir with NTFS ACLs / BitLocker).
+- The admin token file is written with mode `0600` (effective on POSIX). On
+  Windows, `start-hub.ps1` sets an owner-only NTFS ACL on the token file and on
+  the generated `hub-launch`/`hub-logs` directories (which hold the token in
+  cleartext); full-disk protection (BitLocker) remains the operator's job.
+- The macOS launchd agent writes its logs to a per-user `0700` directory
+  (`~/Library/Logs/com.tailhub.hub/`), not a shared `/tmp` path, because the
+  hub prints the generated admin token to stdout on first start.
 
 ## Non-goals (v0.1)
 

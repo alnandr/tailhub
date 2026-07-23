@@ -48,10 +48,17 @@ Top-level:
   stored; mint one with `tailhub apptoken <app>`.
 - `www` — serve static files from `<dataDir>/apps/<app>/www/` at
   `/apps/<app>/` so the hub hosts the PWA itself.
-- `kind` — `"app"` (default) or `"service"`. Apps that host files get a
-  **Launch** button in the console; services are background/invocable
-  integrations (sync targets, webhooks, headless tools) and are never offered
-  for launch, even when they host files.
+- `launchUrl` — absolute `http(s)://` URL to open for apps the hub doesn't
+  host (e.g. a PWA published elsewhere on the tailnet, like `bottomline`
+  running as its own `tailscale serve`). Ignored when `www` is true, since the
+  hub's own hosted URL takes precedence. The URL is stored in normalized form,
+  and the API's public manifest view omits `launchUrl` entirely when it is not
+  operative (hub-hosted or `kind: "service"`), so clients never need to
+  reimplement these precedence rules.
+- `kind` — `"app"` (default) or `"service"`. Apps that host files (`www`) or
+  declare a `launchUrl` get a **Launch** button in the console; services are
+  background/invocable integrations (sync targets, webhooks, headless tools)
+  and are never offered for launch, even when they host files.
 
 Removing a manifest (`DELETE /v1/apps/<app>`) stops traffic for the app but
 keeps its stored artifacts on disk.

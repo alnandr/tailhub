@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Tailhub launchd agent. Installed by scripts/install-hub-startup.sh into
      ~/Library/LaunchAgents/com.tailhub.hub.plist — the installer replaces
-     @NODE@ and @CLI@ with resolved absolute paths. -->
+     @NODE@, @CLI@, and @LOGDIR@ with resolved absolute paths. @LOGDIR@ is a
+     per-user 0700 directory: the hub prints its generated admin token to
+     stdout on first start, so logs must not land in a world-readable path. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -21,8 +23,8 @@
     <false/>
   </dict>
   <key>StandardOutPath</key>
-  <string>/tmp/tailhub.out.log</string>
+  <string>@LOGDIR@/tailhub.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/tailhub.err.log</string>
+  <string>@LOGDIR@/tailhub.err.log</string>
 </dict>
 </plist>

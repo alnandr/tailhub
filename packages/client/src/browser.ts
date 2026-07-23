@@ -4,7 +4,12 @@
  * the state a local-first app needs around the core client.
  *
  * All keys are namespaced per app (`tailhub:<app>:*`) so multiple private
- * apps served from the same hub origin never collide.
+ * apps served from the same hub origin never collide. Namespacing prevents
+ * collisions, NOT access control: localStorage is shared across an entire
+ * origin, so any app co-hosted under the same hub (`/apps/*`) can read every
+ * other app's stored token. Co-hosted apps therefore share a client-side trust
+ * boundary — do not co-host untrusted apps, or give each its own origin. See
+ * docs/security.md ("Another app on the same hub").
  */
 
 import { DEFAULT_HUB_PORT, TailhubClient, suggestHubUrl } from './index.js';

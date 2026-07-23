@@ -30,10 +30,30 @@ if (-not (Test-Path (Join-Path $Root 'package.json'))) {
 }
 Set-Location $Root
 
+# Lock a file/dir down to the current user + SYSTEM only. The launcher and logs
+# carry the admin token in cleartext; without this they inherit the repo tree's
+# permissive ACLs, letting any local user read the token — and, since the logon
+# task executes run-hub.cmd, letting a user with Modify hijack it. Directories
+# get inheritable ACEs so files created inside them are owner-only too.
+function Set-OwnerOnlyAcl {
+  param([string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $meSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+  $flags = if ((Get-Item -LiteralPath $Path).PSIsContainer) { '(OI)(CI)F' } else { 'F' }
+  & icacls $Path /inheritance:r /grant:r "*${meSid}:$flags" "*S-1-5-18:$flags" > $null 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "Warning: could not restrict permissions on $Path (icacls exit $LASTEXITCODE)." -ForegroundColor DarkYellow
+  }
+}
+
 $pidFile = Join-Path $PSScriptRoot '.hub-pid'
 $logDir = Join-Path $PSScriptRoot 'hub-logs'
 $launchDir = Join-Path $PSScriptRoot 'hub-launch'
 New-Item -ItemType Directory -Force -Path $logDir, $launchDir, $DataDir | Out-Null
+# Restrict the token-bearing launcher and log directories before writing secrets
+# into them; new files created inside inherit the owner-only ACE.
+Set-OwnerOnlyAcl -Path $launchDir
+Set-OwnerOnlyAcl -Path $logDir
 
 if (-not $SkipBuild) {
   Write-Host 'Building Tailhub (client SDK + hub)...' -ForegroundColor Cyan
@@ -68,6 +88,9 @@ if ($Token -and -not (Test-Path $tokenFile)) {
   [System.IO.File]::WriteAllText($tokenFile, $Token + "`n")
   Write-Host "Saved admin token to $tokenFile for future starts." -ForegroundColor Green
 }
+# The admin token file is a plaintext secret — mirror the Node side's 0600 with
+# an owner-only NTFS ACL (also repairs a file left world-readable by an older run).
+Set-OwnerOnlyAcl -Path $tokenFile
 
 $outLog = Join-Path $logDir 'hub.out.log'
 $errLog = Join-Path $logDir 'hub.err.log'
@@ -107,6 +130,9 @@ if ($Token) { $launcherLines += ('set "TAILHUB_TOKEN=' + (Escape-CmdValue $Token
 $launcherLines += ('cd /d "' + $Root + '"')
 $launcherLines += $runLine
 Write-AsciiFile -Path $launcher -Lines $launcherLines
+# Re-assert owner-only on the launcher itself: it embeds the token verbatim, and
+# an overwrite preserves a pre-existing file's ACL rather than the dir's.
+Set-OwnerOnlyAcl -Path $launcher
 
 # Hidden launcher: WScript.Shell.Run style 0 = no console window.
 $hiddenVbs = Join-Path $launchDir 'run-hidden.vbs'

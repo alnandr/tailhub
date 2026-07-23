@@ -73,6 +73,11 @@ export type AppManifest = {
   www?: boolean;
   /** 'app' (default) is launchable when hosted; 'service' is background-only. */
   kind?: 'app' | 'service';
+  /**
+   * External URL to open for apps the hub doesn't host (`www` false/absent).
+   * Ignored when `www` is true; never offered for `kind: 'service'`.
+   */
+  launchUrl?: string;
 };
 
 export type PublicManifest = {
@@ -82,6 +87,8 @@ export type PublicManifest = {
   collections: Record<string, CollectionPolicy>;
   www: boolean;
   kind: 'app' | 'service';
+  /** Only present when operative — omitted for services and hub-hosted (`www`) apps. */
+  launchUrl?: string;
   tokenCount: number;
 };
 

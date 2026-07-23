@@ -21,7 +21,13 @@ case "$(uname -s)" in
     PLIST_DIR="$HOME/Library/LaunchAgents"
     PLIST="$PLIST_DIR/com.tailhub.hub.plist"
     mkdir -p "$PLIST_DIR"
-    sed -e "s|@NODE@|$NODE_BIN|" -e "s|@CLI@|$CLI|" \
+    # Per-user, owner-only log dir: the hub prints its generated admin token to
+    # stdout on first start, so its logs must not be world-readable (a shared
+    # /tmp path would leak the token to any local user).
+    LOG_DIR="$HOME/Library/Logs/com.tailhub.hub"
+    mkdir -p "$LOG_DIR"
+    chmod 700 "$LOG_DIR"
+    sed -e "s|@NODE@|$NODE_BIN|" -e "s|@CLI@|$CLI|" -e "s|@LOGDIR@|$LOG_DIR|" \
       "$ROOT/deploy/launchd/com.tailhub.hub.plist" > "$PLIST"
     launchctl unload "$PLIST" 2>/dev/null || true
     launchctl load "$PLIST"

@@ -19,10 +19,11 @@ import { APP_PATTERN, COLLECTION_PATTERN, RESERVED_COLLECTIONS } from './ids.js'
 export type EncryptionPolicy = 'none' | 'optional' | 'required';
 
 /**
- * 'app' — an end-user app; combined with `www: true` the console offers to
- * launch it. 'service' — a background/invocable integration (sync targets,
- * webhooks, headless tools) that is never offered for launch, even when it
- * hosts files.
+ * 'app' — an end-user app; the console offers to launch it when the hub
+ * hosts it (`www: true`) or it declares a `launchUrl`. 'service' — a
+ * background/invocable integration (sync targets, webhooks, headless tools)
+ * that is never offered for launch, even when it hosts files or declares a
+ * `launchUrl`.
  */
 export type AppKind = 'app' | 'service';
 
@@ -42,6 +43,13 @@ export type AppManifest = {
   /** Serve static files from <dataDir>/apps/<app>/www at /apps/<app>/. */
   www?: boolean;
   kind?: AppKind;
+  /**
+   * External URL to open for apps the hub doesn't host (`www` false/absent) —
+   * e.g. a PWA published elsewhere on the tailnet. Ignored when `www` is
+   * true, since the hub's own hosted URL takes precedence. Never offered for
+   * `kind: 'service'`.
+   */
+  launchUrl?: string;
 };
 
 /** Manifest view returned by the API — token digests are never echoed. */
@@ -52,6 +60,8 @@ export type PublicManifest = {
   collections: Record<string, CollectionPolicy>;
   www: boolean;
   kind: AppKind;
+  /** Only present when operative — omitted for services and hub-hosted (`www`) apps. */
+  launchUrl?: string;
   tokenCount: number;
 };
 
@@ -60,6 +70,7 @@ const MAX_COLLECTIONS = 100;
 const MAX_TOKENS = 50;
 const MAX_ARTIFACT_BYTES_CEILING = 1024 * 1024 * 1024; // 1 GiB
 const MAX_HISTORY_KEEP = 1000;
+const MAX_LAUNCH_URL_LENGTH = 2000;
 
 export function appsDir(dataDir: string): string {
   return path.join(dataDir, 'apps');
@@ -95,7 +106,11 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
     return invalid(`Manifest app "${app}" does not match the URL app "${expectedApp}".`);
   }
 
-  const manifest: AppManifest = { app, collections: {} };
+  // Null-prototype map: the collection allowlist is enforced by bracket
+  // lookups (`manifest.collections[name]`) on the request path, so a plain
+  // `{}` would let inherited keys like "constructor" or "hasOwnProperty"
+  // resolve to a truthy Object.prototype member and pass as declared.
+  const manifest: AppManifest = { app, collections: Object.create(null) };
 
   if (raw.name !== undefined) {
     if (typeof raw.name !== 'string' || raw.name.length > 120) {
@@ -195,6 +210,21 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
     manifest.kind = raw.kind;
   }
 
+  if (raw.launchUrl !== undefined) {
+    if (typeof raw.launchUrl !== 'string' || raw.launchUrl.length > MAX_LAUNCH_URL_LENGTH) {
+      return invalid(`Manifest "launchUrl" must be a string of at most ${MAX_LAUNCH_URL_LENGTH} chars.`);
+    }
+    const parsed = URL.canParse(raw.launchUrl) ? new URL(raw.launchUrl) : null;
+    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+      return invalid('Manifest "launchUrl" must be an absolute http(s) URL.');
+    }
+    // Store the normalized href, not the raw string: browsers parse
+    // scheme-relative forms like "https:app.ts.net" relative to the current
+    // page, so the raw string can resolve to the hub origin client-side even
+    // though it parsed as absolute here.
+    manifest.launchUrl = parsed.href;
+  }
+
   return { ok: true, manifest };
 }
 
@@ -257,13 +287,19 @@ export async function listManifests(dataDir: string): Promise<AppManifest[]> {
 }
 
 export function publicManifest(manifest: AppManifest): PublicManifest {
+  const www = manifest.www === true;
+  const kind = manifest.kind ?? 'app';
   return {
     app: manifest.app,
     name: manifest.name,
     description: manifest.description,
     collections: manifest.collections,
-    www: manifest.www === true,
-    kind: manifest.kind ?? 'app',
+    www,
+    kind,
+    // Echo launchUrl only when it is operative — hub hosting takes precedence
+    // and services are never launchable — so API consumers don't each have to
+    // reimplement the precedence rules.
+    launchUrl: kind === 'app' && !www ? manifest.launchUrl : undefined,
     tokenCount: manifest.tokens?.length ?? 0,
   };
 }

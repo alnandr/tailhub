@@ -145,6 +145,77 @@ describe('app registration', () => {
     assert.equal(body.app.tokens, undefined);
   });
 
+  it('registers a launchUrl for apps the hub does not host', async () => {
+    const bad = await jfetch('/v1/apps/bottomline', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'bottomline',
+        collections: { portfolios: {} },
+        launchUrl: 'not-a-url',
+      }),
+    });
+    assert.equal(bad.status, 400);
+    assert.match(bad.body.message, /launchUrl/);
+
+    const ok = await jfetch('/v1/apps/bottomline', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'bottomline',
+        collections: { portfolios: {} },
+        launchUrl: 'https://bottomline.example.ts.net/',
+      }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.app.www, false);
+    assert.equal(ok.body.app.launchUrl, 'https://bottomline.example.ts.net/');
+
+    // Scheme-relative typos ("https:host") parse as absolute server-side but
+    // would resolve against the page origin in a browser — stored normalized.
+    const typo = await jfetch('/v1/apps/bottomline', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'bottomline',
+        collections: { portfolios: {} },
+        launchUrl: 'https:bottomline.example.ts.net',
+      }),
+    });
+    assert.equal(typo.status, 200);
+    assert.equal(typo.body.app.launchUrl, 'https://bottomline.example.ts.net/');
+  });
+
+  it('omits launchUrl from the public view when it is not operative', async () => {
+    // Services are never launchable.
+    const svc = await jfetch('/v1/apps/svc-elsewhere', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'svc-elsewhere',
+        kind: 'service',
+        collections: { data: {} },
+        launchUrl: 'https://svc.example.ts.net/',
+      }),
+    });
+    assert.equal(svc.status, 200);
+    assert.equal(svc.body.app.launchUrl, undefined);
+
+    // Hub hosting takes precedence over launchUrl.
+    const hosted = await jfetch('/v1/apps/hosted-elsewhere', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'hosted-elsewhere',
+        www: true,
+        collections: { data: {} },
+        launchUrl: 'https://hosted.example.ts.net/',
+      }),
+    });
+    assert.equal(hosted.status, 200);
+    assert.equal(hosted.body.app.launchUrl, undefined);
+  });
+
   it('classifies apps vs background services via kind', async () => {
     const bad = await jfetch('/v1/apps/svc', {
       method: 'PUT',
@@ -262,6 +333,21 @@ describe('artifact push/pull', () => {
       (await jfetch('/v1/apps/notes/notes/.hidden', { token: APP_TOKEN })).status,
       400
     );
+  });
+
+  it('does not treat the inherited "constructor" key as a declared collection', async () => {
+    // The allowlist is a bracket lookup on manifest.collections; a plain {} would
+    // let "constructor" (an all-lowercase Object.prototype key that passes the
+    // name pattern) resolve to a truthy prototype member and pass as declared.
+    // The notes manifest never declares it.
+    const read = await jfetch('/v1/apps/notes/constructor', { token: APP_TOKEN });
+    assert.equal(read.status, 404);
+    const write = await jfetch('/v1/apps/notes/constructor/x', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: { x: 1 }, baseRevision: 0 }),
+    });
+    assert.equal(write.status, 404);
   });
 });
 

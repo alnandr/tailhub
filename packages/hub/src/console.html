@@ -276,9 +276,10 @@
     }
   }
 
-  const isLaunchable = (app) => app.www === true && app.kind !== 'service';
+  const isLaunchable = (app) => app.kind !== 'service' && (app.www === true || !!app.launchUrl);
+  const launchHref = (app) => app.www === true ? `/apps/${encodeURIComponent(app.app)}/` : app.launchUrl;
   const launchLink = (app, extra) => isLaunchable(app)
-    ? `<a class="launch${extra ? ' ' + extra : ''}" href="/apps/${encodeURIComponent(app.app)}/"
+    ? `<a class="launch${extra ? ' ' + extra : ''}" href="${esc(launchHref(app))}"
          target="_blank" rel="noopener">Launch ↗</a>`
     : '';
 
@@ -293,6 +294,7 @@
         <div class="chips">
           ${Object.keys(app.collections).map((c) => '<span class="chip">' + esc(c) + '</span>').join('')}
           ${app.www ? '<span class="chip www">hosts app files</span>' : ''}
+          ${isLaunchable(app) && !app.www ? '<span class="chip www">hosted elsewhere</span>' : ''}
           ${app.kind === 'service' ? '<span class="chip">background service</span>' : ''}
           ${app.tokenCount ? '<span class="chip">' + app.tokenCount + ' app token' + (app.tokenCount > 1 ? 's' : '') + '</span>' : ''}
         </div>
@@ -371,7 +373,7 @@
             </td>
             <td class="mono dim">${esc(a.id)}</td>
             <td class="num">r${a.revision}</td>
-            <td class="dim">${fmtTime(a.updatedAt)}</td>
+            <td class="dim">${esc(fmtTime(a.updatedAt))}</td>
             <td class="dim">${esc(a.deviceName || (a.deviceId || '').slice(0, 8) || '—')}</td>
             <td class="num dim">${fmtBytes(a.bytes)}</td>
           </tr>`).join('');
@@ -420,7 +422,7 @@
       <tr>
         <td class="num">r${h.revision}</td>
         <td>${esc(h.title)} ${h.deleted ? '<span class="chip del">deleted</span>' : ''} ${h.encrypted ? '<span class="chip enc">encrypted</span>' : ''}</td>
-        <td class="dim">${fmtTime(h.receivedAt)}</td>
+        <td class="dim">${esc(fmtTime(h.receivedAt))}</td>
         <td class="dim">${esc(h.deviceName || (h.deviceId || '').slice(0, 8) || '—')}</td>
         <td class="num dim">${fmtBytes(h.bytes)}</td>
         <td>${!h.deleted && h.revision !== meta.revision ? '<button class="quiet" data-restore="' + h.revision + '">Restore</button>' : ''}</td>

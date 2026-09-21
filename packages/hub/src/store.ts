@@ -107,6 +107,30 @@ export type RemoveArtifactResult =
 const HISTORY_DIR = '.history';
 const HISTORY_FILE_PATTERN = /^r\d{9}\.json$/;
 
+/** Current or history record failed to parse. The file has been quarantined. */
+export class CorruptArtifactError extends Error {
+  constructor() {
+    super('Artifact data is corrupt and was quarantined.');
+    this.name = 'CorruptArtifactError';
+  }
+}
+
+/**
+ * The on-disk record's id does not match the id used to address it. Happens
+ * when two ids differ only by case and the filesystem folds them together.
+ * The file is left in place — it may be valid data for the stored id.
+ */
+export class ArtifactIdCollisionError extends Error {
+  readonly storedId: string;
+  readonly requestedId: string;
+  constructor(storedId: string, requestedId: string) {
+    super(`Artifact id "${requestedId}" collides with stored id "${storedId}".`);
+    this.name = 'ArtifactIdCollisionError';
+    this.storedId = storedId;
+    this.requestedId = requestedId;
+  }
+}
+
 export function toMeta(record: StoredArtifact): ArtifactMeta {
   return {
     app: record.app,
@@ -225,15 +249,15 @@ export class ArtifactStore {
       record = parseStoredArtifact(raw, file);
     } catch (error) {
       await quarantineFile(file).catch(() => undefined);
-      throw error;
+      console.error('tailhub: quarantined corrupt artifact', path.basename(file), error);
+      throw new CorruptArtifactError();
     }
     if (record.id !== id) {
       // Do not quarantine: the record may be valid data for a different id
       // (case-twin ids collide on case-insensitive filesystems).
-      throw new Error(
-        `Artifact file ${path.basename(file)} holds id "${record.id}" but "${id}" was requested — ` +
-          'possible id case-collision on a case-insensitive filesystem.'
-      );
+      const error = new ArtifactIdCollisionError(record.id, id);
+      console.error('tailhub: artifact id collision', error.message);
+      throw error;
     }
     return record;
   }
@@ -466,7 +490,8 @@ export class ArtifactStore {
         return parseStoredArtifact(raw, file);
       } catch (error) {
         await quarantineFile(file).catch(() => undefined);
-        throw error;
+        console.error('tailhub: quarantined corrupt artifact', path.basename(file), error);
+        throw new CorruptArtifactError();
       }
     });
   }
@@ -505,8 +530,9 @@ export class ArtifactStore {
 
   /**
    * Bulk import. Each entry goes through the same revision checks as a single
-   * push (or force). Tombstone entries are not replayed in v1 — deletions do
-   * not propagate through bundle import; they are reported in `conflicts`.
+   * push (or force). Tombstone entries are not replayed in v1 — the HTTP
+   * layer skips them and reports them in `skipped` before they reach this
+   * method, so deletions do not propagate through bundle import.
    */
   async putBundle(
     app: string,

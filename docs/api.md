@@ -42,7 +42,7 @@ Errors are always `{ "error": "<label>", "message": "<human sentence>" }`.
 |---|---|---|
 | `GET /v1/apps` | admin | All manifests (public view — token digests never returned). |
 | `GET /v1/apps/:app` | admin or app | This app's manifest (public view). |
-| `PUT /v1/apps/:app` | admin | Register/replace the manifest. Body: manifest JSON. |
+| `PUT /v1/apps/:app` | admin | Register/replace the manifest. Body: manifest JSON. Omitting `tokens` keeps the digests already on disk; sending `tokens` (including `[]`) replaces them. |
 | `DELETE /v1/apps/:app` | admin | Unregister; stored artifacts are kept on disk. |
 | `GET /apps/:app/*` | none | Static app files when the manifest sets `www: true`. |
 

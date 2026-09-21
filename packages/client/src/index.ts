@@ -135,9 +135,21 @@ export class TailhubError extends Error {
   }
 }
 
-/** Network failures and 408/425/429/5xx are worth retrying; 4xx are not. */
+/**
+ * Timeout or transport failure. Distinct from {@link TailhubError} (the hub
+ * answered) and from programmer errors, which must not be retried.
+ */
+export class TailhubNetworkError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'TailhubNetworkError';
+  }
+}
+
+/** Transport failures and 408/425/429/5xx are worth retrying; other 4xx are not. */
 export function isTransientError(error: unknown): boolean {
-  if (!(error instanceof TailhubError)) return error instanceof Error;
+  if (error instanceof TailhubNetworkError) return true;
+  if (!(error instanceof TailhubError)) return false;
   return (
     error.status === 408 ||
     error.status === 425 ||
@@ -259,14 +271,15 @@ export class TailhubClient {
   private async request<T>(
     path: string,
     init: RequestInit = {},
-    options: { etag?: string | null; allow304?: boolean } = {}
+    options: { etag?: string | null; allow304?: boolean; auth?: boolean } = {}
   ): Promise<{ status: number; data: T; etag: string | null }> {
-    if (!this.token) {
+    const sendAuth = options.auth !== false;
+    if (sendAuth && !this.token) {
       throw new Error('Tailhub: set a token first (app token or hub admin token).');
     }
     const url = `${this.baseUrl}${path}`;
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${this.token}`);
+    if (sendAuth && this.token) headers.set('Authorization', `Bearer ${this.token}`);
     if (this.deviceId) headers.set('X-Tailhub-Device', this.deviceId);
     if (this.deviceName) headers.set('X-Tailhub-Device-Name', this.deviceName);
     if (options.etag) headers.set('If-None-Match', options.etag);
@@ -309,9 +322,16 @@ export class TailhubClient {
       }
       return { status: res.status, data: data as T, etag };
     } catch (err) {
-      if (err instanceof TailhubError) throw err;
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error('Tailhub hub timed out — is it running and reachable over your tailnet?');
+      if (err instanceof TailhubError || err instanceof TailhubNetworkError) throw err;
+      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+        throw new TailhubNetworkError(
+          'Tailhub hub timed out — is it running and reachable over your tailnet?',
+          { cause: err }
+        );
+      }
+      // undici/browser fetch rejects with TypeError when the host is unreachable.
+      if (err instanceof TypeError) {
+        throw new TailhubNetworkError('Could not reach the Tailhub hub.', { cause: err });
       }
       throw err instanceof Error
         ? err
@@ -326,7 +346,9 @@ export class TailhubClient {
   /** Unauthenticated liveness probe. */
   async health(): Promise<{ status: string; name: string; version: string }> {
     const { data } = await this.request<{ status: string; name: string; version: string }>(
-      '/health'
+      '/health',
+      {},
+      { auth: false }
     );
     return data;
   }
@@ -428,12 +450,21 @@ export class TailhubClient {
     return { ...data, etag };
   }
 
-  /** Tombstone an artifact (revision-checked like push unless force). */
+  /**
+   * Tombstone an artifact. Pass the revision you are deleting. The hub
+   * treats a missing baseRevision as a conflict, so this method refuses to
+   * send that request unless `force` is set.
+   */
   async remove(
     collection: string,
     id: string,
-    options: { baseRevision?: number; force?: boolean } = {}
+    options: { baseRevision: number; force?: boolean } | { force: true; baseRevision?: number }
   ): Promise<{ ok: true; artifact: ArtifactMeta }> {
+    if (options.force !== true && options.baseRevision === undefined) {
+      throw new Error(
+        'Tailhub: remove() requires baseRevision (the revision you are deleting) unless force is true.'
+      );
+    }
     const params = new URLSearchParams();
     if (options.baseRevision !== undefined) params.set('baseRevision', String(options.baseRevision));
     if (options.force) params.set('force', '1');

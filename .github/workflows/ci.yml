@@ -25,3 +25,10 @@ jobs:
       - name: Verify publish contents
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm pack --dry-run -w @tailhub/client -w tailhub
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the release image
+        run: docker build -t tailhub:ci .

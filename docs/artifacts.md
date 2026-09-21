@@ -44,8 +44,12 @@ Per-collection policy:
 
 Top-level:
 
-- `tokens` — SHA-256 digests of app-scoped bearer tokens. Raw tokens are never
-  stored; mint one with `tailhub apptoken <app>`.
+- `tokens` — SHA-256 digests of app-scoped bearer tokens (at most 50). Raw
+  tokens are never stored; mint one with `tailhub apptoken <app>`, which
+  refuses to go past the cap instead of saving a manifest the hub would
+  ignore. A `PUT` that omits `tokens` keeps the digests already on disk —
+  the console update form does this, because the API never echoes digests.
+  Sending `tokens` replaces them; `[]` revokes every app token.
 - `www` — serve static files from `<dataDir>/apps/<app>/www/` at
   `/apps/<app>/` so the hub hosts the PWA itself.
 - `launchUrl` — absolute `http(s)://` URL to open for apps the hub doesn't

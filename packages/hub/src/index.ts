@@ -5,7 +5,7 @@
 
 export { createHub } from './http.js';
 export type { Hub, HubOptions } from './http.js';
-export { ArtifactStore, toMeta } from './store.js';
+export { ArtifactIdCollisionError, ArtifactStore, CorruptArtifactError, toMeta } from './store.js';
 export type {
   ArtifactBundle,
   ArtifactMeta,
@@ -18,6 +18,8 @@ export type {
   WriteContext,
 } from './store.js';
 export {
+  MAX_APP_TOKENS,
+  appendAppTokenDigest,
   deleteManifest,
   listManifests,
   loadManifest,

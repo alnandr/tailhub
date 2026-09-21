@@ -40,7 +40,9 @@ import {
 } from './manifests.js';
 import { serveFile, serveStaticTree } from './static.js';
 import {
+  ArtifactIdCollisionError,
   ArtifactStore,
+  CorruptArtifactError,
   toMeta,
   type CollectionLimits,
   type EncryptionMeta,
@@ -295,6 +297,15 @@ export function createHub(options: HubOptions): Hub {
         const body = await readJsonBody(req, maxRequestBytes);
         const result = validateManifest(body, appName);
         if (!result.ok) throw new HttpProblem(400, 'Invalid manifest', result.message);
+        // The public manifest view never echoes digests, so console updates
+        // (and any client that round-trips that view) omit `tokens`. Dropping
+        // them would revoke every device. An explicit `tokens` array, including
+        // `[]`, still replaces the stored digests.
+        const tokensOmitted =
+          typeof body !== 'object' || body === null || Array.isArray(body) || !('tokens' in body);
+        if (tokensOmitted && manifest?.tokens) {
+          result.manifest.tokens = [...manifest.tokens];
+        }
         await saveManifest(dataDir, result.manifest);
         return sendJson(res, 200, { ok: true, app: publicManifest(result.manifest) });
       }
@@ -631,10 +642,16 @@ export function createHub(options: HubOptions): Hub {
       if (error instanceof HttpProblem) {
         return sendJson(res, error.status, { error: error.errorLabel, message: error.message });
       }
+      if (error instanceof CorruptArtifactError) {
+        return sendJson(res, 422, { error: 'Corrupt artifact', message: error.message });
+      }
+      if (error instanceof ArtifactIdCollisionError) {
+        return sendJson(res, 409, { error: 'Artifact id collision', message: error.message });
+      }
       console.error('tailhub: unhandled request error', error);
       return sendJson(res, 500, {
         error: 'Internal error',
-        message: error instanceof Error ? error.message : 'Unknown error.',
+        message: 'Unexpected server error.',
       });
     });
   });

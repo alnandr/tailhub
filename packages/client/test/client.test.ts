@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   TailhubClient,
   TailhubError,
+  TailhubNetworkError,
   isTransientError,
   withRetry,
 } from '../src/index.js';
@@ -95,6 +96,52 @@ describe('TailhubClient', () => {
     await client(impl).pull('notes', 'weird id?').catch(() => undefined);
     assert.match(calls[0]?.url ?? '', /weird%20id%3F/);
   });
+
+  it('wraps fetch transport failures as TailhubNetworkError', async () => {
+    const impl = (async () => {
+      throw new TypeError('fetch failed');
+    }) as typeof fetch;
+    await assert.rejects(() => client(impl).list('notes'), TailhubNetworkError);
+  });
+
+  it('probes /health without a token or Authorization header', async () => {
+    const { impl, calls } = fakeFetch([
+      { status: 200, body: { status: 'ok', name: 'tailhub', version: '0.1.0' } },
+    ]);
+    const hub = new TailhubClient({
+      baseUrl: 'http://hub.test:4747',
+      app: 'notes',
+      token: '',
+      fetch: impl,
+    });
+    const health = await hub.health();
+    assert.equal(health.status, 'ok');
+    assert.equal(health.name, 'tailhub');
+    assert.equal(calls[0]?.url, 'http://hub.test:4747/health');
+    const headers = new Headers(calls[0]?.init.headers);
+    assert.equal(headers.get('Authorization'), null);
+  });
+
+  it('requires baseRevision on remove unless force is set', async () => {
+    const { impl, calls } = fakeFetch([
+      { status: 200, body: { ok: true, artifact: { revision: 5 } } },
+      { status: 200, body: { ok: true, artifact: { revision: 5 } } },
+    ]);
+    const hub = client(impl);
+    await assert.rejects(
+      () => hub.remove('notes', 'n1', {} as { baseRevision: number }),
+      /baseRevision/
+    );
+    assert.equal(calls.length, 0);
+
+    await hub.remove('notes', 'n1', { baseRevision: 4 });
+    assert.equal(calls[0]?.init.method, 'DELETE');
+    assert.match(calls[0]?.url ?? '', /baseRevision=4/);
+
+    await hub.remove('notes', 'n1', { force: true });
+    assert.match(calls[1]?.url ?? '', /force=1/);
+    assert.doesNotMatch(calls[1]?.url ?? '', /baseRevision/);
+  });
 });
 
 describe('retry helpers', () => {
@@ -103,7 +150,23 @@ describe('retry helpers', () => {
     assert.equal(isTransientError(new TailhubError('x', 429)), true);
     assert.equal(isTransientError(new TailhubError('x', 409)), false);
     assert.equal(isTransientError(new TailhubError('x', 401)), false);
-    assert.equal(isTransientError(new Error('network down')), true);
+    assert.equal(isTransientError(new TailhubNetworkError('timed out')), true);
+    assert.equal(isTransientError(new TypeError('fetch failed')), false);
+    assert.equal(isTransientError(new Error('network down')), false);
+  });
+
+  it('does not retry programmer errors', async () => {
+    let attempts = 0;
+    await assert.rejects(
+      withRetry(
+        async () => {
+          attempts += 1;
+          throw new TypeError('payload is not an object');
+        },
+        { attempts: 3, delaysMs: [1] }
+      )
+    );
+    assert.equal(attempts, 1);
   });
 
   it('retries transient failures then succeeds', async () => {

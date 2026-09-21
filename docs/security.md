@@ -59,8 +59,9 @@ identity is attribution, not authorization — authorization is tokens.
 
 - Zero runtime dependencies — the supply-chain surface is Node itself.
 - Hand-validated inputs with strict charsets for `app` / `collection` / `id`;
-  path traversal in static hosting is blocked by segment checks plus resolved-
-  path containment (covered by tests, including encoded and backslash forms).
+  path traversal in static hosting is blocked by segment checks plus realpath
+  containment, so a symlink under `www/` cannot be followed outside that
+  directory (covered by tests, including encoded and backslash forms).
 - Atomic writes; corrupt files are quarantined, never deleted.
 - Request logs contain method/path/status only — never tokens or payloads.
 - The admin token file is written with mode `0600` (effective on POSIX). On

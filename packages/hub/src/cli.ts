@@ -14,7 +14,7 @@ import {
 } from './config.js';
 import { createHub } from './http.js';
 import { isValidAppName } from './ids.js';
-import { loadManifest, saveManifest } from './manifests.js';
+import { appendAppTokenDigest, loadManifest, saveManifest } from './manifests.js';
 import { TAILHUB_VERSION } from './version.js';
 
 const HELP = `tailhub v${TAILHUB_VERSION} — private apps for your tailnet
@@ -121,8 +121,13 @@ async function appToken(config: HubConfig, app: string | undefined): Promise<voi
     return;
   }
   const token = randomBytes(32).toString('hex');
-  manifest.tokens = [...(manifest.tokens ?? []), sha256Hex(token)];
-  await saveManifest(config.dataDir, manifest);
+  const next = appendAppTokenDigest(manifest, sha256Hex(token));
+  if (!next.ok) {
+    console.error(next.message);
+    process.exitCode = 1;
+    return;
+  }
+  await saveManifest(config.dataDir, next.manifest);
   console.log(token);
   console.error(
     `App token for "${app}" (shown once — only its SHA-256 digest is stored). ` +

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { ArtifactStore } from '../src/store.js';
+import { ArtifactIdCollisionError, ArtifactStore, CorruptArtifactError } from '../src/store.js';
 
 const LIMITS = { maxBytes: 1024 * 1024, historyKeep: 3 };
 
@@ -152,6 +152,36 @@ describe('ArtifactStore corruption handling', () => {
     const names = await fs.readdir(dir);
     assert.ok(names.some((name) => name.includes('.corrupt-')));
     assert.ok(!names.includes('bad.json'));
+  });
+
+  it('quarantines a corrupt record on get', async () => {
+    const dir = path.join(root, `case-${n}`, 'data', 'demo', 'items');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'bad.json'), '{ not json', 'utf8');
+    await assert.rejects(() => store.get('demo', 'items', 'bad'), CorruptArtifactError);
+    const names = await fs.readdir(dir);
+    assert.ok(!names.includes('bad.json'));
+    assert.ok(names.some((name) => name.startsWith('bad.json.corrupt-')));
+  });
+
+  it('rejects a record whose stored id does not match the requested id', async () => {
+    const created = await store.put(input('Ab', { x: 1 }, 0), {}, LIMITS);
+    assert.ok(created.ok);
+    const file = path.join(root, `case-${n}`, 'data', 'demo', 'items', 'Ab.json');
+    const raw = JSON.parse(await fs.readFile(file, 'utf8')) as { id: string };
+    raw.id = 'aB';
+    await fs.writeFile(file, JSON.stringify(raw), 'utf8');
+    await assert.rejects(
+      () => store.get('demo', 'items', 'Ab'),
+      (error: unknown) => {
+        assert.ok(error instanceof ArtifactIdCollisionError);
+        assert.equal(error.storedId, 'aB');
+        assert.equal(error.requestedId, 'Ab');
+        return true;
+      }
+    );
+    // The colliding file is still the original record, not quarantined.
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).id, 'aB');
   });
 });
 

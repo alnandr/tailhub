@@ -81,5 +81,23 @@ export async function serveStaticTree(
     if (path.extname(filePath)) return false;
     filePath = path.join(root, 'index.html');
   }
+  // Lexical containment is not enough: stat/readFile follow symlinks, so a
+  // link dropped under www/ could serve the admin token file. realpath both
+  // sides and allow only files that stay inside the (possibly itself linked)
+  // www root. In-tree symlinks remain readable.
+  if (!(await staysInside(root, filePath))) return false;
   return serveFile(res, filePath);
+}
+
+async function staysInside(rootDir: string, filePath: string): Promise<boolean> {
+  let realRoot: string;
+  let realFile: string;
+  try {
+    realRoot = await fs.realpath(rootDir);
+    realFile = await fs.realpath(filePath);
+  } catch {
+    return false;
+  }
+  const rel = path.relative(realRoot, realFile);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }

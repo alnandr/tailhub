@@ -67,7 +67,8 @@ export type PublicManifest = {
 
 const TOKEN_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_COLLECTIONS = 100;
-const MAX_TOKENS = 50;
+/** Digests stored on one manifest. Past this, the file fails validation and the app vanishes. */
+export const MAX_APP_TOKENS = 50;
 const MAX_ARTIFACT_BYTES_CEILING = 1024 * 1024 * 1024; // 1 GiB
 const MAX_HISTORY_KEEP = 1000;
 const MAX_LAUNCH_URL_LENGTH = 2000;
@@ -185,8 +186,8 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
   }
 
   if (raw.tokens !== undefined) {
-    if (!Array.isArray(raw.tokens) || raw.tokens.length > MAX_TOKENS) {
-      return invalid(`Manifest "tokens" must be an array of at most ${MAX_TOKENS} digests.`);
+    if (!Array.isArray(raw.tokens) || raw.tokens.length > MAX_APP_TOKENS) {
+      return invalid(`Manifest "tokens" must be an array of at most ${MAX_APP_TOKENS} digests.`);
     }
     for (const digest of raw.tokens) {
       if (typeof digest !== 'string' || !TOKEN_DIGEST_PATTERN.test(digest)) {
@@ -226,6 +227,36 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
   }
 
   return { ok: true, manifest };
+}
+
+/**
+ * Mint path for `tailhub apptoken`. Refuses at {@link MAX_APP_TOKENS} instead
+ * of writing a manifest `loadManifest` would then treat as unregistered.
+ * Does not mutate `manifest`.
+ */
+export function appendAppTokenDigest(
+  manifest: AppManifest,
+  digest: string
+): { ok: true; manifest: AppManifest } | { ok: false; message: string } {
+  if (typeof digest !== 'string' || !TOKEN_DIGEST_PATTERN.test(digest)) {
+    return { ok: false, message: 'App token digest must be a lowercase SHA-256 hex string.' };
+  }
+  const tokens = manifest.tokens ?? [];
+  if (tokens.length >= MAX_APP_TOKENS) {
+    return {
+      ok: false,
+      message:
+        `App "${manifest.app}" already has the maximum of ${MAX_APP_TOKENS} tokens. ` +
+        'Revoke one before minting another (PUT the manifest with a shorter "tokens" array).',
+    };
+  }
+  // Keep the null-prototype collection map. A spread would copy keys onto
+  // a normal object and reopen the "constructor" collection bypass.
+  const collections: AppManifest['collections'] = Object.create(null);
+  for (const [name, policy] of Object.entries(manifest.collections)) {
+    collections[name] = policy;
+  }
+  return { ok: true, manifest: { ...manifest, collections, tokens: [...tokens, digest] } };
 }
 
 export async function loadManifest(dataDir: string, app: string): Promise<AppManifest | null> {

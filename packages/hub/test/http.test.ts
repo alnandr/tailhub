@@ -251,6 +251,53 @@ describe('app registration', () => {
     });
     assert.equal(put.status, 403);
   });
+
+  it('keeps token digests when an update omits them and drops them on tokens: []', async () => {
+    const collections = {
+      notes: { maxBytes: 4096, historyKeep: 3, encryption: 'optional' },
+      sealed: { encryption: 'required' },
+      plain: { encryption: 'none' },
+    };
+    const updated = await jfetch('/v1/apps/notes', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'notes',
+        name: 'Tailnotes renamed',
+        collections,
+        www: true,
+      }),
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.app.name, 'Tailnotes renamed');
+    assert.equal(updated.body.app.tokenCount, 1);
+    assert.equal(updated.body.app.tokens, undefined);
+    assert.equal((await jfetch('/v1/apps/notes', { token: APP_TOKEN })).status, 200);
+
+    const revoked = await jfetch('/v1/apps/notes', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'notes', name: 'Tailnotes', collections, tokens: [], www: true }),
+    });
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.app.tokenCount, 0);
+    assert.equal((await jfetch('/v1/apps/notes', { token: APP_TOKEN })).status, 401);
+
+    const restored = await jfetch('/v1/apps/notes', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'notes',
+        name: 'Tailnotes',
+        collections,
+        tokens: [sha256Hex(APP_TOKEN)],
+        www: true,
+      }),
+    });
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.app.tokenCount, 1);
+    assert.equal((await jfetch('/v1/apps/notes', { token: APP_TOKEN })).status, 200);
+  });
 });
 
 describe('artifact push/pull', () => {
@@ -456,5 +503,54 @@ describe('static app hosting', () => {
     // Apps without www stay unhosted.
     const none = await fetch(`${base}/apps/unknown-app/`);
     assert.equal(none.status, 404);
+  });
+
+  it('does not follow a symlink that escapes www', async (t) => {
+    const www = path.join(dataDir, 'apps', 'notes', 'www');
+    await fs.mkdir(www, { recursive: true });
+    const secret = path.join(dataDir, 'symlink-secret.txt');
+    await fs.writeFile(secret, 'SYMLINK-SECRET', 'utf8');
+    const outside = path.join(www, 'leak.txt');
+    const inside = path.join(www, 'inside.txt');
+    const alias = path.join(www, 'alias.txt');
+    await fs.writeFile(inside, 'inside-ok', 'utf8');
+    try {
+      await fs.symlink(secret, outside, 'file');
+      await fs.symlink(inside, alias, 'file');
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES') {
+        t.skip('symlink creation is not permitted on this platform');
+        return;
+      }
+      throw error;
+    }
+
+    const leaked = await fetch(`${base}/apps/notes/leak.txt`);
+    const leakedBody = await leaked.text();
+    assert.notEqual(leaked.status, 200);
+    assert.ok(!leakedBody.includes('SYMLINK-SECRET'));
+
+    const linked = await fetch(`${base}/apps/notes/alias.txt`);
+    assert.equal(linked.status, 200);
+    assert.equal(await linked.text(), 'inside-ok');
+  });
+});
+
+describe('corrupt artifacts', () => {
+  it('returns 422 and quarantines an unparseable record', async () => {
+    const dir = path.join(dataDir, 'data', 'notes', 'notes');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'corrupt1.json'), '{ not json', 'utf8');
+
+    const res = await jfetch('/v1/apps/notes/notes/corrupt1', { token: APP_TOKEN });
+    assert.equal(res.status, 422);
+    assert.equal(res.body.error, 'Corrupt artifact');
+    assert.equal(res.body.message, 'Artifact data is corrupt and was quarantined.');
+    assert.ok(!JSON.stringify(res.body).includes('not json'));
+
+    const names = await fs.readdir(dir);
+    assert.ok(!names.includes('corrupt1.json'));
+    assert.ok(names.some((name) => name.startsWith('corrupt1.json.corrupt-')));
   });
 });

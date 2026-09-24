@@ -98,6 +98,18 @@ describe('health + auth', () => {
     assert.equal(body.storage, 'local-disk');
   });
 
+  it('serves the SDK entry point as a re-export of index.js', async (t) => {
+    const res = await fetch(`${base}/sdk/tailhub-client.js`);
+    if (res.status === 404) {
+      t.skip('client SDK not built');
+      return;
+    }
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /javascript/);
+    // One module instance: a second copy would give apps a different TailhubError class.
+    assert.equal((await res.text()).trim(), "export * from './index.js';");
+  });
+
   it('serves the console at /', async () => {
     const res = await fetch(`${base}/`);
     assert.equal(res.status, 200);

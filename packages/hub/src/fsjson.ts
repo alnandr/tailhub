@@ -17,8 +17,12 @@ export function isNotFound(error: unknown): boolean {
   );
 }
 
+/** Hub data is personal: directories are owner-only (umask still applies). */
+export const PRIVATE_DIR_MODE = 0o700;
+export const PRIVATE_FILE_MODE = 0o600;
+
 export async function ensureDir(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
+  await fs.mkdir(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
 }
 
 export async function atomicWriteJson(file: string, value: unknown): Promise<void> {
@@ -26,7 +30,11 @@ export async function atomicWriteJson(file: string, value: unknown): Promise<voi
   await ensureDir(dir);
   const temp = path.join(dir, `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
   try {
-    await fs.writeFile(temp, JSON.stringify(value, null, 2), { encoding: 'utf8', flag: 'wx' });
+    await fs.writeFile(temp, JSON.stringify(value, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: PRIVATE_FILE_MODE,
+    });
     await fs.rename(temp, file);
   } catch (error) {
     await fs.rm(temp, { force: true }).catch(() => undefined);

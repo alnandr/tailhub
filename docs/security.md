@@ -64,13 +64,19 @@ identity is attribution, not authorization — authorization is tokens.
   directory (covered by tests, including encoded and backslash forms).
 - Atomic writes; corrupt files are quarantined, never deleted.
 - Request logs contain method/path/status only — never tokens or payloads.
-- The admin token file is written with mode `0600` (effective on POSIX). On
-  Windows, `start-hub.ps1` sets an owner-only NTFS ACL on the token file and on
-  the generated `hub-launch`/`hub-logs` directories (which hold the token in
-  cleartext); full-disk protection (BitLocker) remains the operator's job.
-- The macOS launchd agent writes its logs to a per-user `0700` directory
-  (`~/Library/Logs/com.tailhub.hub/`), not a shared `/tmp` path, because the
-  hub prints the generated admin token to stdout on first start.
+- On POSIX the data dir is created and kept at mode `0700`, and every file
+  the hub writes (artifacts, history, manifests, the admin token) is `0600`,
+  so other local accounts cannot read hub data. An existing data dir is
+  tightened at startup, and a token file found with looser permissions is
+  reset to `0600` with a warning. On Windows, `start-hub.ps1` sets owner-only
+  NTFS ACLs on the data dir, the token file, and the generated
+  `hub-launch`/`hub-logs` directories (which hold the token in cleartext);
+  full-disk protection (BitLocker) remains the operator's job.
+- Hub logs are owner-only everywhere the repo launches it: the macOS launchd
+  agent uses a per-user `0700` directory (`~/Library/Logs/com.tailhub.hub/`),
+  `start-hub.sh` uses `umask 077` and a `0700` log dir, and the systemd unit
+  sets `UMask=0077` — because the hub prints the generated admin token to
+  stdout on first start.
 
 ## Non-goals (v0.1)
 

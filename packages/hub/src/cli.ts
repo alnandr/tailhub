@@ -4,12 +4,13 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
 import { sha256Hex } from './auth.js';
 import {
   adminTokenPath,
   loadConfigFromEnv,
+  preparePrivateDataDir,
   resolveAdminToken,
+  writeAdminTokenFile,
   type HubConfig,
 } from './config.js';
 import { createHub } from './http.js';
@@ -42,6 +43,7 @@ Expose over your tailnet (HTTPS + MagicDNS, run once):
 `;
 
 async function start(config: HubConfig): Promise<void> {
+  await preparePrivateDataDir(config.dataDir);
   const { token, source } = await resolveAdminToken(config);
   const hub = createHub({
     dataDir: config.dataDir,
@@ -97,11 +99,7 @@ async function rotateToken(config: HubConfig): Promise<void> {
     return;
   }
   const token = randomBytes(32).toString('hex');
-  await fs.mkdir(config.dataDir, { recursive: true });
-  await fs.writeFile(adminTokenPath(config.dataDir), `${token}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
+  await writeAdminTokenFile(config.dataDir, token);
   console.log(token);
   console.error('New admin token saved. Restart the hub and update every client that used the old one.');
 }

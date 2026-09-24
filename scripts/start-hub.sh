@@ -9,7 +9,11 @@ cd "$ROOT"
 PORT="${TAILHUB_PORT:-4747}"
 LOG_DIR="$ROOT/scripts/hub-logs"
 PID_FILE="$ROOT/scripts/.hub-pid"
+# The hub prints a newly generated admin token to stdout, so its logs (and
+# anything else this script creates) must be owner-only.
+umask 077
 mkdir -p "$LOG_DIR"
+chmod 700 "$LOG_DIR"
 
 if [[ "${1:-}" != "--skip-build" ]]; then
   echo "Building Tailhub (client SDK + hub)..."

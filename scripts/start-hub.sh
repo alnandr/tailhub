@@ -47,4 +47,6 @@ done
 
 echo "Hub launched but the health check failed; recent log:"
 tail -n 30 "$LOG_DIR/hub.err.log" "$LOG_DIR/hub.out.log" || true
+# Don't leave a half-started process (and its pid file) behind.
+"$ROOT/scripts/stop-hub.sh" || true
 exit 1

@@ -73,13 +73,18 @@ if (-not (Test-Path $cliPath)) { throw "Hub is not built ($cliPath missing). Run
 if (Test-Path $pidFile) {
   & (Join-Path $PSScriptRoot 'stop-hub.ps1') -Quiet
 }
-# Free the port if something else is still bound
+# Free the port if an older hub is still bound; never kill unrelated software.
 $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 foreach ($c in $listeners) {
-  try {
-    & taskkill.exe /PID $c.OwningProcess /T /F 2>$null | Out-Null
-    Write-Host "Freed port $Port (killed pid $($c.OwningProcess))" -ForegroundColor DarkYellow
-  } catch { }
+  $owner = [int]$c.OwningProcess
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $owner" -ErrorAction SilentlyContinue
+  if ($proc -and $proc.CommandLine -like '*packages\hub\dist\cli.js*') {
+    & taskkill.exe /PID $owner /T /F 2>$null | Out-Null
+    Write-Host "Freed port $Port (stopped an older hub, pid $owner)" -ForegroundColor DarkYellow
+  } else {
+    $name = if ($proc) { $proc.Name } else { 'unknown process' }
+    throw "Port $Port is in use by pid $owner ($name), which is not a Tailhub hub. Stop it or pass -Port."
+  }
 }
 
 # Token resolution: param/env -> persisted file -> let the hub generate one
@@ -188,6 +193,8 @@ if (-not $ok) {
   Write-Host 'Hub process launched but the health check failed.' -ForegroundColor Red
   if (Test-Path $errLog) { Get-Content $errLog -Tail 30 | Write-Host }
   if (Test-Path $outLog) { Get-Content $outLog -Tail 30 | Write-Host }
+  # Don't leave a half-started process (and its pid file) behind.
+  & (Join-Path $PSScriptRoot 'stop-hub.ps1') -Quiet
   throw ('Hub not reachable on http://127.0.0.1:' + $Port + '/health')
 }
 

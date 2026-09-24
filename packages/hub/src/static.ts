@@ -34,10 +34,31 @@ export function contentTypeFor(file: string): string {
   return MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
 }
 
+/** Sent with every static response (console, SDK, hosted app files). */
+const STATIC_SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+};
+
+/**
+ * For pages that must never be framed by another origin — the admin console,
+ * where the admin token is typed. Hosted apps are left embeddable.
+ */
+export const NO_FRAMING_HEADERS: Record<string, string> = {
+  'Content-Security-Policy': "frame-ancestors 'none'",
+  'X-Frame-Options': 'DENY',
+};
+
+export type ServeFileOptions = {
+  contentType?: string;
+  headers?: Record<string, string>;
+};
+
+/** Node drops the body for HEAD requests, so this also answers HEAD. */
 export async function serveFile(
   res: ServerResponse,
   filePath: string,
-  contentType?: string
+  options: ServeFileOptions = {}
 ): Promise<boolean> {
   let data: Buffer;
   try {
@@ -46,7 +67,9 @@ export async function serveFile(
     return false;
   }
   res.writeHead(200, {
-    'Content-Type': contentType ?? contentTypeFor(filePath),
+    ...STATIC_SECURITY_HEADERS,
+    ...options.headers,
+    'Content-Type': options.contentType ?? contentTypeFor(filePath),
     'Content-Length': data.length,
     'Cache-Control': 'no-cache',
   });

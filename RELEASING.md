@@ -39,6 +39,12 @@ git push && git push --tags          # ← this triggers the release workflow
 The workflow re-verifies that the tag matches every version constant
 (`scripts/check-versions.mjs v0.2.0`), builds, tests, then publishes
 `@tailhub/client` before `tailhub` (the hub bundles the client's built SDK).
+The image is built for `linux/amd64` and `linux/arm64`.
+
+**Prereleases**: a tag containing `-` (e.g. `v0.2.0-rc.1`) publishes to the
+npm `next` dist-tag, marks the GitHub Release as a prerelease, and pushes only
+the versioned image tag — `latest` on npm and GHCR keeps pointing at the last
+stable release.
 
 ## Verifying a release
 

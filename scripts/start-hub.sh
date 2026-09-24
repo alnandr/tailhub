@@ -9,7 +9,11 @@ cd "$ROOT"
 PORT="${TAILHUB_PORT:-4747}"
 LOG_DIR="$ROOT/scripts/hub-logs"
 PID_FILE="$ROOT/scripts/.hub-pid"
+# The hub prints a newly generated admin token to stdout, so its logs (and
+# anything else this script creates) must be owner-only.
+umask 077
 mkdir -p "$LOG_DIR"
+chmod 700 "$LOG_DIR"
 
 if [[ "${1:-}" != "--skip-build" ]]; then
   echo "Building Tailhub (client SDK + hub)..."
@@ -43,4 +47,6 @@ done
 
 echo "Hub launched but the health check failed; recent log:"
 tail -n 30 "$LOG_DIR/hub.err.log" "$LOG_DIR/hub.out.log" || true
+# Don't leave a half-started process (and its pid file) behind.
+"$ROOT/scripts/stop-hub.sh" || true
 exit 1

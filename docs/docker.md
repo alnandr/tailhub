@@ -1,7 +1,8 @@
 # Running Tailhub in Docker
 
-The image is published as `ghcr.io/alnandr/tailhub` (also buildable from the
-repo's `Dockerfile`). It contains only Node and the hub's compiled `dist/` —
+The image is published as `ghcr.io/alnandr/tailhub` for `linux/amd64` and
+`linux/arm64` (Raspberry Pi, most NAS boxes), and is also buildable from the
+repo's `Dockerfile`. It contains only Node and the hub's compiled `dist/` —
 no runtime dependencies — and stores everything under the `/data` volume
 (`TAILHUB_DATA_DIR`).
 

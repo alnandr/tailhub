@@ -39,7 +39,8 @@ case "$(uname -s)" in
     UNIT_DIR="$HOME/.config/systemd/user"
     UNIT="$UNIT_DIR/tailhub.service"
     mkdir -p "$UNIT_DIR"
-    sed -e "s|@EXEC_START@|$NODE_BIN $CLI start|" \
+    # systemd splits ExecStart on whitespace unless arguments are quoted.
+    sed -e "s|@EXEC_START@|\"$NODE_BIN\" \"$CLI\" start|" \
       "$ROOT/deploy/systemd/tailhub.service" > "$UNIT"
     systemctl --user daemon-reload
     systemctl --user enable --now tailhub.service

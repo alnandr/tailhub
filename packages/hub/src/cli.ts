@@ -4,12 +4,14 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
 import { sha256Hex } from './auth.js';
 import {
   adminTokenPath,
   loadConfigFromEnv,
+  MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH,
+  preparePrivateDataDir,
   resolveAdminToken,
+  writeAdminTokenFile,
   type HubConfig,
 } from './config.js';
 import { createHub } from './http.js';
@@ -42,7 +44,15 @@ Expose over your tailnet (HTTPS + MagicDNS, run once):
 `;
 
 async function start(config: HubConfig): Promise<void> {
+  await preparePrivateDataDir(config.dataDir);
   const { token, source } = await resolveAdminToken(config);
+  if (token.length < MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH) {
+    console.warn(
+      `tailhub: the admin token is only ${token.length} characters. Use at least ` +
+        `${MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH} random characters — \`tailhub token rotate\` ` +
+        'generates one (unset TAILHUB_TOKEN first if you set it).'
+    );
+  }
   const hub = createHub({
     dataDir: config.dataDir,
     adminToken: token,
@@ -53,7 +63,30 @@ async function start(config: HubConfig): Promise<void> {
     trustTailscaleHeaders: config.trustTailscaleHeaders,
     quiet: config.quiet,
   });
-  const { port, host } = await hub.listen(config.port, config.host);
+  let port: number;
+  let host: string;
+  try {
+    ({ port, host } = await hub.listen(config.port, config.host));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EADDRINUSE') {
+      console.error(
+        `Port ${config.port} on ${config.host} is already in use — is another hub already running? ` +
+          'Stop it, or set TAILHUB_PORT to a free port.'
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (code === 'EACCES') {
+      console.error(
+        `Not allowed to listen on ${config.host}:${config.port}. Ports below 1024 need extra ` +
+          'privileges; use the default 4747 or another high port.'
+      );
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  }
 
   console.log(`tailhub v${TAILHUB_VERSION}`);
   console.log(`  Listening: http://${host}:${port}`);
@@ -71,11 +104,20 @@ async function start(config: HubConfig): Promise<void> {
   console.log('  Expose over Tailscale (once, from an admin shell):');
   console.log(`    tailscale serve --bg --https=443 http://127.0.0.1:${port}`);
 
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) {
+      console.error('tailhub: already shutting down — in-flight requests are cut off after a few seconds.');
+      return;
+    }
+    shuttingDown = true;
     hub
       .close()
       .then(() => process.exit(0))
-      .catch(() => process.exit(1));
+      .catch((error: unknown) => {
+        console.error('tailhub: error while shutting down', error);
+        process.exit(1);
+      });
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
@@ -97,11 +139,7 @@ async function rotateToken(config: HubConfig): Promise<void> {
     return;
   }
   const token = randomBytes(32).toString('hex');
-  await fs.mkdir(config.dataDir, { recursive: true });
-  await fs.writeFile(adminTokenPath(config.dataDir), `${token}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
+  await writeAdminTokenFile(config.dataDir, token);
   console.log(token);
   console.error('New admin token saved. Restart the hub and update every client that used the old one.');
 }

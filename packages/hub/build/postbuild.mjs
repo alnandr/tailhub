@@ -1,6 +1,6 @@
 // Copies non-TypeScript assets into dist/: the admin console page and the
 // browser SDK (built by @tailhub/client) that the hub serves at /sdk/*.
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -18,7 +18,10 @@ if (!existsSync(path.join(clientDist, 'index.js'))) {
 }
 const sdkDir = path.join(dist, 'sdk');
 mkdirSync(sdkDir, { recursive: true });
-copyFileSync(path.join(clientDist, 'index.js'), path.join(sdkDir, 'tailhub-client.js'));
+// A re-export, not a second copy: browser.js imports ./index.js, and two
+// copies would be two module instances with distinct classes, so errors from
+// a browser.js client would fail `instanceof TailhubError` in the app.
+writeFileSync(path.join(sdkDir, 'tailhub-client.js'), "export * from './index.js';\n");
 copyFileSync(path.join(clientDist, 'index.js'), path.join(sdkDir, 'index.js'));
 copyFileSync(path.join(clientDist, 'crypto.js'), path.join(sdkDir, 'crypto.js'));
 copyFileSync(path.join(clientDist, 'browser.js'), path.join(sdkDir, 'browser.js'));

@@ -25,6 +25,20 @@ is fronted by Tailscale Serve, `Tailscale-User-Login` is recorded as
 
 Errors are always `{ "error": "<label>", "message": "<human sentence>" }`.
 
+Status codes beyond the route-specific ones below:
+
+| Status | When |
+|---|---|
+| `400` | Invalid name, id, or body (including Windows device names such as `con` or `nul.json`). |
+| `401` / `403` | Missing or unknown token / a valid token without the needed scope. |
+| `409` | Revision conflict (with `remote` metadata), or `Artifact id collision`: two ids that differ only in case map to one file on a case-insensitive filesystem. |
+| `413` | Body over `TAILHUB_MAX_REQUEST_BYTES` (refused from `Content-Length` before reading, and the connection is closed) or over a collection's `maxBytes`. |
+| `422` | `Corrupt artifact`: the stored file could not be parsed; it has been quarantined (renamed `*.corrupt-*`), never deleted. |
+| `500` | Unexpected server error. The body is always the generic `Unexpected server error.`; details go to the hub's log only. |
+
+`GET` routes for the console, SDK, hosted app files, and `/health` also answer
+`HEAD`.
+
 ## Routes
 
 ### Hub
@@ -34,7 +48,7 @@ Errors are always `{ "error": "<label>", "message": "<human sentence>" }`.
 | `GET /health` | none | `{ status, name, version }` liveness. |
 | `GET /v1/hub` | admin | `{ apps, artifacts, uptimeSeconds, version, storage }`. |
 | `GET /` | none | Admin console (token entered in-page). |
-| `GET /sdk/tailhub-client.js` | none | Browser SDK (`index.js`, `browser.js`, `crypto.js` alongside). |
+| `GET /sdk/tailhub-client.js` | none | Browser SDK entry point (re-exports `index.js`; `browser.js` and `crypto.js` alongside). |
 
 ### Apps
 
@@ -44,6 +58,7 @@ Errors are always `{ "error": "<label>", "message": "<human sentence>" }`.
 | `GET /v1/apps/:app` | admin or app | This app's manifest (public view). |
 | `PUT /v1/apps/:app` | admin | Register/replace the manifest. Body: manifest JSON. Omitting `tokens` keeps the digests already on disk; sending `tokens` (including `[]`) replaces them. |
 | `DELETE /v1/apps/:app` | admin | Unregister; stored artifacts are kept on disk. |
+| `DELETE /v1/apps/:app/tokens` | admin | Revoke every app token for the app; the rest of the manifest is kept. Response: `{ ok, revoked, app }`. (Only `DELETE` is routed here, so a collection named `tokens` still lists normally.) |
 | `GET /apps/:app/*` | none | Static app files when the manifest sets `www: true`. |
 
 ### Artifacts
@@ -74,6 +89,12 @@ Responses: `200 { ok, created, artifact }` (+ `ETag`) · `409` conflict with
 `remote` metadata · `413` over the collection's `maxBytes` · `400` policy
 violations (e.g. collection requires encryption).
 
+`title` (200 chars) and the device fields (128 chars) are trimmed and capped,
+with control characters replaced by spaces. `updatedAt` is kept only when it
+is an ISO 8601 date-time no more than 24 hours ahead of the hub's clock, and
+is stored in UTC; otherwise the hub's receive time is used, so a client cannot
+pin entries to the top of a list with an arbitrary string.
+
 ### Bundles (whole-app export / import)
 
 | Route | Auth | Description |
@@ -86,6 +107,8 @@ violations (e.g. collection requires encryption).
 - Payload limits: per-request cap 25 MiB (`TAILHUB_MAX_REQUEST_BYTES`);
   per-collection `maxBytes` on top.
 - CORS: all origins reflected by default (the API is token-authenticated;
-  restrict with `TAILHUB_CORS_ORIGINS=https://app1,https://app2`).
+  restrict with `TAILHUB_CORS_ORIGINS=https://app1,https://app2`; trailing
+  slashes are ignored).
 - `ETag` format: `"<revision>-<hash prefix>"` — treat it as opaque.
+  `If-None-Match` uses weak comparison, so `W/"…"` validators also match.
 - All timestamps are ISO-8601 UTC strings.

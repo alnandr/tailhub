@@ -59,6 +59,8 @@
   .nameplate small { color: var(--dim); letter-spacing: 0.1em; font-weight: 400; margin-left: 10px; }
   .facts { margin-left: auto; display: flex; gap: 18px; font: 12px var(--mono); color: var(--dim); }
   .facts b { color: var(--paper); font-weight: 600; }
+  button.disconnect { padding: 4px 10px; font: 11px var(--mono); letter-spacing: 0.06em; }
+  .tokens-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 6px; }
 
   .crumbs { margin: 26px 0 4px; font: 12px var(--mono); color: var(--dim); letter-spacing: 0.06em; }
   .crumbs a { color: var(--dim); }
@@ -170,6 +172,7 @@
     <span class="led" id="led"></span>
     <span class="nameplate">Tailhub <small id="version"></small></span>
     <span class="facts" id="facts"></span>
+    <button class="quiet disconnect" id="disconnect" hidden>Disconnect</button>
   </div>
 </header>
 <main class="wrap" id="main"></main>
@@ -225,17 +228,38 @@
   function setLed(mode) {
     const led = $('#led');
     led.className = 'led' + (mode === 'on' ? ' on' : mode === 'fault' ? ' fault' : '');
+    $('#disconnect').hidden = mode !== 'on';
   }
   function setFacts() {
     const el = $('#facts');
-    if (!state.hub) { el.innerHTML = ''; return; }
+    if (!state.hub) { el.innerHTML = ''; $('#version').textContent = ''; return; }
+    const n = (v) => esc(String(Number.isFinite(Number(v)) ? Math.floor(Number(v)) : 0));
+    const up = Number(state.hub.uptimeSeconds) || 0;
     el.innerHTML =
-      'apps <b>' + state.hub.apps + '</b>' +
-      '<span>artifacts <b>' + state.hub.artifacts + '</b></span>' +
-      '<span>up <b>' + Math.floor(state.hub.uptimeSeconds / 3600) + 'h' +
-      Math.floor((state.hub.uptimeSeconds % 3600) / 60) + 'm</b></span>';
+      'apps <b>' + n(state.hub.apps) + '</b>' +
+      '<span>artifacts <b>' + n(state.hub.artifacts) + '</b></span>' +
+      '<span>up <b>' + n(up / 3600) + 'h' + n((up % 3600) / 60) + 'm</b></span>';
     $('#version').textContent = 'v' + state.hub.version;
   }
+
+  async function refreshHub() {
+    state.hub = await api('/v1/hub');
+    state.apps = (await api('/v1/apps')).apps;
+    setFacts();
+  }
+
+  function forgetToken() {
+    state.token = '';
+    state.hub = null;
+    state.apps = [];
+    sessionStorage.removeItem('tailhub-console-token');
+    setFacts();
+  }
+
+  $('#disconnect').addEventListener('click', () => {
+    forgetToken();
+    viewConnect();
+  });
 
   // ---- Views ---------------------------------------------------------------
 
@@ -266,13 +290,15 @@
 
   async function loadHub() {
     try {
-      state.hub = await api('/v1/hub');
-      state.apps = (await api('/v1/apps')).apps;
-      setLed('on'); setFacts();
+      await refreshHub();
+      setLed('on');
       viewApps();
     } catch (err) {
-      if (err.status === 401 || err.status === 403) viewConnect('That token was not accepted.');
-      else { setLed('fault'); viewConnect('Could not reach the hub: ' + err.message); }
+      if (err.status === 401 || err.status === 403) {
+        // Don't keep offering (and re-sending) a token the hub refused.
+        forgetToken();
+        viewConnect('That token was not accepted.');
+      } else { setLed('fault'); viewConnect('Could not reach the hub: ' + err.message); }
     }
   }
 
@@ -337,8 +363,7 @@
       try {
         await api('/v1/apps/' + encodeURIComponent(body.app || ''), { method: 'PUT', body: JSON.stringify(body) });
         st.className = 'status ok'; st.textContent = 'Registered "' + body.app + '".';
-        state.apps = (await api('/v1/apps')).apps;
-        state.hub = await api('/v1/hub'); setFacts();
+        await refreshHub();
         viewApps();
       } catch (err) { st.className = 'status err'; st.textContent = err.message; }
     });
@@ -350,10 +375,24 @@
     main.innerHTML = `
       <div class="crumbs"><a href="#" id="home">apps</a> / <span class="here">${esc(appName)}</span></div>
       <h2>${esc(app.name || appName)}${launchLink(app, 'inline')}</h2>
+      <div class="tokens-row">
+        <span class="dim">${app.tokenCount ? esc(String(app.tokenCount)) + ' app token' + (app.tokenCount > 1 ? 's' : '') : 'No app tokens'}</span>
+        ${app.tokenCount ? '<button class="danger" id="revoke">Revoke all app tokens</button>' : ''}
+        <span class="status" id="tokst"></span>
+      </div>
       <label class="toggle"><input type="checkbox" id="show-del" ${state.includeDeleted ? 'checked' : ''}>
         show deleted artifacts</label>
       <div id="collections"><div class="empty">Loading…</div></div>`;
     $('#home').addEventListener('click', (e) => { e.preventDefault(); viewApps(); });
+    const revoke = $('#revoke');
+    if (revoke) revoke.addEventListener('click', async () => {
+      if (!confirm('Revoke all ' + app.tokenCount + ' app token(s) for "' + appName + '"? Every device using one loses access until you mint a new token with `tailhub apptoken ' + appName + '`.')) return;
+      try {
+        await api('/v1/apps/' + encodeURIComponent(appName) + '/tokens', { method: 'DELETE' });
+        await refreshHub();
+        viewApp(appName);
+      } catch (err) { const st = $('#tokst'); st.className = 'status err'; st.textContent = err.message; }
+    });
     $('#show-del').addEventListener('change', (e) => {
       state.includeDeleted = e.target.checked;
       viewApp(appName);
@@ -471,6 +510,7 @@
         if (!confirm('Delete "' + meta.title + '"? A tombstone revision is written; retained history stays restorable.')) return;
         try {
           await api(base + '?baseRevision=' + meta.revision, { method: 'DELETE' });
+          await refreshHub();
           viewApp(appName);
         } catch (err) { const st = $('#st'); st.className = 'status err'; st.textContent = err.message; }
       });
@@ -486,6 +526,7 @@
               baseRevision: 0, force: true,
             }),
           });
+          await refreshHub();
           viewArtifact(appName, collection, id);
         } catch (err) { const st = $('#st'); st.className = 'status err'; st.textContent = err.message; }
       }));

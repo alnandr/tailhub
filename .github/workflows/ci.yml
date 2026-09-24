@@ -5,13 +5,22 @@ on:
     branches: [master, main]
   pull_request:
 
+permissions:
+  contents: read
+
+# A newer push to the same PR supersedes the running checks; runs on main
+# always finish so every merge gets a result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: [20, 22, 24]
+        node: [22, 24]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,3 +41,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the release image
         run: docker build -t tailhub:ci .
+      - name: Smoke-test the image without ESM auto-detection
+        run: |
+          docker run --rm --entrypoint node tailhub:ci --no-experimental-detect-module /app/cli.js --version

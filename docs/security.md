@@ -44,6 +44,14 @@ For data that should be unreadable even on the hub disk, the SDK seals
 payloads client-side: PBKDF2-SHA-256 (310k iterations) → AES-256-GCM, random
 salt/IV per write, WebCrypto only. The passphrase never leaves the device.
 Collections can set `encryption: "required"` so the hub refuses plaintext.
+
+The client does not trust the envelope a hub returns: `openPayload` refuses
+iteration counts outside 100,000–2,000,000 and wrong-sized salts or IVs
+before deriving a key, so a hostile hub cannot stall a device with an
+enormous PBKDF2 count. Sealing with the artifact's `{ app, collection, id }`
+(v2 envelope) authenticates that address with the ciphertext, so a hub cannot
+swap sealed payloads between artifacts; open with `requireBound: true` to
+refuse the older unbound v1 format.
 Artifact **titles stay plaintext** (they are UX metadata) — apps handling
 sensitive titles should put them in the payload and push a generic title.
 
@@ -62,15 +70,29 @@ identity is attribution, not authorization — authorization is tokens.
   path traversal in static hosting is blocked by segment checks plus realpath
   containment, so a symlink under `www/` cannot be followed outside that
   directory (covered by tests, including encoded and backslash forms).
+- The console is served with `Content-Security-Policy: frame-ancestors 'none'`
+  and `X-Frame-Options: DENY`, so another site cannot frame the page where the
+  admin token is typed. All responses send `X-Content-Type-Options: nosniff`;
+  static files also send `Referrer-Policy: no-referrer`. Hosted apps stay
+  embeddable.
+- Request bodies with a `Content-Length` over `TAILHUB_MAX_REQUEST_BYTES` are
+  refused with 413 before any of the body is read, and the connection is
+  closed. Headers must arrive within 30 s and a whole request within 5 min.
 - Atomic writes; corrupt files are quarantined, never deleted.
 - Request logs contain method/path/status only — never tokens or payloads.
-- The admin token file is written with mode `0600` (effective on POSIX). On
-  Windows, `start-hub.ps1` sets an owner-only NTFS ACL on the token file and on
-  the generated `hub-launch`/`hub-logs` directories (which hold the token in
-  cleartext); full-disk protection (BitLocker) remains the operator's job.
-- The macOS launchd agent writes its logs to a per-user `0700` directory
-  (`~/Library/Logs/com.tailhub.hub/`), not a shared `/tmp` path, because the
-  hub prints the generated admin token to stdout on first start.
+- On POSIX the data dir is created and kept at mode `0700`, and every file
+  the hub writes (artifacts, history, manifests, the admin token) is `0600`,
+  so other local accounts cannot read hub data. An existing data dir is
+  tightened at startup, and a token file found with looser permissions is
+  reset to `0600` with a warning. On Windows, `start-hub.ps1` sets owner-only
+  NTFS ACLs on the data dir, the token file, and the generated
+  `hub-launch`/`hub-logs` directories (which hold the token in cleartext);
+  full-disk protection (BitLocker) remains the operator's job.
+- Hub logs are owner-only everywhere the repo launches it: the macOS launchd
+  agent uses a per-user `0700` directory (`~/Library/Logs/com.tailhub.hub/`),
+  `start-hub.sh` uses `umask 077` and a `0700` log dir, and the systemd unit
+  sets `UMask=0077` — because the hub prints the generated admin token to
+  stdout on first start.
 
 ## Non-goals (v0.1)
 

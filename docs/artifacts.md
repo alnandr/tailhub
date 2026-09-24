@@ -10,6 +10,11 @@ Namespace: `app / collection / id`.
 - **collection** — same charset, e.g. `portfolios`, `notes` (`bundle` is reserved)
 - **id** — `[A-Za-z0-9._-]{1,128}`, no leading dot (UUIDs, slugs)
 
+None of the three may be a Windows device name (`con`, `prn`, `aux`, `nul`,
+`com1`–`com9`, `lpt1`–`lpt9`, in any case and with any extension such as
+`nul.json`). Those names cannot be files on Windows, so every hub refuses them
+to keep bundles portable between platforms.
+
 ## App manifests
 
 A hub only accepts artifacts for apps it has a **manifest** for — registering
@@ -49,7 +54,9 @@ Top-level:
   refuses to go past the cap instead of saving a manifest the hub would
   ignore. A `PUT` that omits `tokens` keeps the digests already on disk —
   the console update form does this, because the API never echoes digests.
-  Sending `tokens` replaces them; `[]` revokes every app token.
+  Sending `tokens` replaces them; `[]` revokes every app token. The console's
+  **Revoke all app tokens** button (`DELETE /v1/apps/<app>/tokens`) does the
+  same without resending the manifest.
 - `www` — serve static files from `<dataDir>/apps/<app>/www/` at
   `/apps/<app>/` so the hub hosts the PWA itself.
 - `launchUrl` — absolute `http(s)://` URL to open for apps the hub doesn't
@@ -133,12 +140,12 @@ revision) and gives every private app rollback without writing any code.
 
 ## End-to-end encryption
 
-The SDK's `sealPayload(payload, passphrase)` produces a ciphertext payload
-plus an envelope:
+The SDK's `sealPayload(payload, passphrase, { app, collection, id })`
+produces a ciphertext payload plus an envelope:
 
 ```json
 "encryption": {
-  "v": 1, "algo": "AES-GCM-256", "kdf": "PBKDF2-SHA-256",
+  "v": 2, "algo": "AES-GCM-256", "kdf": "PBKDF2-SHA-256",
   "iterations": 310000, "salt": "<b64>", "iv": "<b64>"
 }
 ```
@@ -146,6 +153,17 @@ plus an envelope:
 The hub stores both verbatim and never sees the passphrase. `openPayload`
 reverses it on any device with the same passphrase. Collections can make this
 mandatory with `encryption: "required"`.
+
+Passing the artifact's `{ app, collection, id }` seals a **v2** envelope: the
+ciphertext is authenticated together with that address, so a hub cannot move
+it onto another artifact, and the passphrase is Unicode-normalized (NFC) so it
+derives the same key on every platform. Open it with the same context:
+`openPayload(record, passphrase, { context: { app, collection, id } })`. Add
+`requireBound: true` to refuse **v1** envelopes (sealed without a context,
+which remain supported for existing data) so a hub cannot downgrade an
+artifact to the unbound format. `openPayload` also refuses envelopes whose
+iteration count falls outside 100,000–2,000,000, or whose salt or IV has the
+wrong size, before doing any key derivation.
 
 ## On-disk layout
 
@@ -162,6 +180,8 @@ mandatory with `encryption: "required"`.
         .history/<id>/r000000002.json
 ```
 
-Writes are atomic (temp file + rename), all store operations serialize through
-one lock, and unparseable files are quarantined (renamed `*.corrupt-*`), never
-deleted. Plain JSON on your own disk — greppable, backupable, no database.
+Writes are atomic and durable (temp file, `fsync`, rename, then `fsync` of the
+directory), all store operations serialize through one lock, and unparseable
+files are quarantined (renamed `*.corrupt-*`), never deleted. On Linux and
+macOS the data dir is `0700` and every file `0600`. Plain JSON on your own
+disk — greppable, backupable, no database.

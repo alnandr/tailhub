@@ -40,7 +40,9 @@ export {
   adminTokenPath,
   defaultDataDir,
   loadConfigFromEnv,
+  preparePrivateDataDir,
   resolveAdminToken,
+  writeAdminTokenFile,
 } from './config.js';
 export type { HubConfig } from './config.js';
 export { TAILHUB_NAME, TAILHUB_VERSION } from './version.js';

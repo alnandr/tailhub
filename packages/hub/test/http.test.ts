@@ -98,6 +98,18 @@ describe('health + auth', () => {
     assert.equal(body.storage, 'local-disk');
   });
 
+  it('serves the SDK entry point as a re-export of index.js', async (t) => {
+    const res = await fetch(`${base}/sdk/tailhub-client.js`);
+    if (res.status === 404) {
+      t.skip('client SDK not built');
+      return;
+    }
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /javascript/);
+    // One module instance: a second copy would give apps a different TailhubError class.
+    assert.equal((await res.text()).trim(), "export * from './index.js';");
+  });
+
   it('serves the console at /', async () => {
     const res = await fetch(`${base}/`);
     assert.equal(res.status, 200);
@@ -300,6 +312,45 @@ describe('app registration', () => {
   });
 });
 
+describe('app token revocation', () => {
+  it('revokes all app tokens for admins only, keeping the rest of the manifest', async () => {
+    const extraToken = 'revocable-app-token-00112233445566';
+    const registered = await jfetch('/v1/apps/revocable', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'revocable',
+        name: 'Revocable',
+        collections: { tokens: {} },
+        tokens: [sha256Hex(extraToken)],
+        www: true,
+        launchUrl: 'https://kept.example.ts.net/',
+      }),
+    });
+    assert.equal(registered.status, 200);
+
+    // A collection named "tokens" is still listable.
+    const listed = await jfetch('/v1/apps/revocable/tokens', { token: extraToken });
+    assert.equal(listed.status, 200);
+    assert.deepEqual(listed.body.artifacts, []);
+
+    const byApp = await jfetch('/v1/apps/revocable/tokens', { method: 'DELETE', token: extraToken });
+    assert.equal(byApp.status, 403);
+
+    const revoked = await jfetch('/v1/apps/revocable/tokens', { method: 'DELETE', token: ADMIN });
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.revoked, 1);
+    assert.equal(revoked.body.app.tokenCount, 0);
+    assert.equal((await jfetch('/v1/apps/revocable', { token: extraToken })).status, 401);
+
+    // The hidden launchUrl survives: it becomes operative once www is off.
+    const stored = JSON.parse(await fs.readFile(path.join(dataDir, 'apps', 'revocable.json'), 'utf8'));
+    assert.equal(stored.launchUrl, 'https://kept.example.ts.net/');
+    assert.equal(stored.name, 'Revocable');
+    assert.deepEqual(stored.tokens, []);
+  });
+});
+
 describe('artifact push/pull', () => {
   it('pushes, pulls, and honors ETag/304', async () => {
     const push = await jfetch('/v1/apps/notes/notes/n1', {
@@ -361,6 +412,28 @@ describe('artifact push/pull', () => {
     assert.equal(noSealAllowed.status, 400);
   });
 
+  it('accepts bound (v2) envelopes and rejects unknown versions', async () => {
+    const envelope = {
+      algo: 'AES-GCM-256', kdf: 'PBKDF2-SHA-256',
+      iterations: 310000, salt: 'c2FsdA==', iv: 'aXZpdml2aXZp',
+    };
+    const v2 = await jfetch('/v1/apps/notes/sealed/bound1', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: 'Y2lwaGVy', encryption: { v: 2, ...envelope }, baseRevision: 0 }),
+    });
+    assert.equal(v2.status, 200);
+    const read = await jfetch('/v1/apps/notes/sealed/bound1', { token: APP_TOKEN });
+    assert.equal(read.body.encryption.v, 2);
+
+    const v3 = await jfetch('/v1/apps/notes/sealed/bound2', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: 'Y2lwaGVy', encryption: { v: 3, ...envelope }, baseRevision: 0 }),
+    });
+    assert.equal(v3.status, 400);
+  });
+
   it('413s payloads over the collection limit', async () => {
     const big = await jfetch('/v1/apps/notes/notes/huge', {
       method: 'PUT',
@@ -380,6 +453,85 @@ describe('artifact push/pull', () => {
       (await jfetch('/v1/apps/notes/notes/.hidden', { token: APP_TOKEN })).status,
       400
     );
+  });
+
+  it('rejects Windows device names as app, collection, and artifact ids', async () => {
+    for (const id of ['con', 'NUL', 'com1', 'lpt9.backup', 'Aux.json']) {
+      const res = await jfetch(`/v1/apps/notes/notes/${id}`, {
+        method: 'PUT',
+        token: APP_TOKEN,
+        body: JSON.stringify({ payload: { x: 1 }, baseRevision: 0 }),
+      });
+      assert.equal(res.status, 400, id);
+    }
+    const app = await jfetch('/v1/apps/prn', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'prn', collections: { data: {} } }),
+    });
+    assert.equal(app.status, 400);
+    const collection = await jfetch('/v1/apps/devices', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'devices', collections: { com3: {} } }),
+    });
+    assert.equal(collection.status, 400);
+    assert.match(collection.body.message, /Windows device name/);
+    // Names that merely start with a device name are fine.
+    const fine = await jfetch('/v1/apps/notes/notes/console-log', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: { x: 1 }, baseRevision: 0 }),
+    });
+    assert.equal(fine.status, 200);
+  });
+
+  it('strips control characters from stored metadata', async () => {
+    const res = await jfetch('/v1/apps/notes/notes/ctrl1', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({
+        title: 'line one\nline\u0000two\u007f',
+        deviceId: '\u0007dev-9',
+        deviceName: 'phone\r\n',
+        payload: { x: 1 },
+        baseRevision: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.artifact.title, 'line one line two');
+    assert.equal(res.body.artifact.deviceId, 'dev-9');
+    assert.equal(res.body.artifact.deviceName, 'phone');
+
+    const onlyControl = await jfetch('/v1/apps/notes/notes/ctrl2', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ title: '\n\t', payload: {}, baseRevision: 0 }),
+    });
+    assert.equal(onlyControl.body.artifact.title, 'Untitled');
+  });
+
+  it('keeps only sane ISO updatedAt values, normalized to UTC', async () => {
+    const push = async (id: string, updatedAt: unknown) =>
+      (
+        await jfetch(`/v1/apps/notes/notes/${id}`, {
+          method: 'PUT',
+          token: APP_TOKEN,
+          body: JSON.stringify({ updatedAt, payload: {}, baseRevision: 0 }),
+        })
+      ).body.artifact;
+
+    const offset = await push('when1', '2026-07-20T21:16:50.853+02:00');
+    assert.equal(offset.updatedAt, '2026-07-20T19:16:50.853Z');
+
+    for (const [id, bogus] of [
+      ['when2', 'zzz-pinned-to-top'],
+      ['when3', '9999-12-31T00:00:00Z'],
+      ['when4', '1'],
+    ] as const) {
+      const artifact = await push(id, bogus);
+      assert.equal(artifact.updatedAt, artifact.receivedAt, `${bogus} should fall back to hub time`);
+    }
   });
 
   it('does not treat the inherited "constructor" key as a declared collection', async () => {
@@ -534,6 +686,119 @@ describe('static app hosting', () => {
     const linked = await fetch(`${base}/apps/notes/alias.txt`);
     assert.equal(linked.status, 200);
     assert.equal(await linked.text(), 'inside-ok');
+  });
+});
+
+function rawRequest(
+  method: string,
+  rawPath: string,
+  requestHeaders: Record<string, string>
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(base);
+    const req = http.request(
+      { host: url.hostname, port: url.port, path: rawPath, method, headers: requestHeaders },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: data }));
+      }
+    );
+    req.on('error', reject);
+    // Send headers only: an oversize Content-Length must be refused unread.
+    req.flushHeaders();
+  });
+}
+
+describe('server behaviour', () => {
+  it('refuses an oversized Content-Length before reading the body', async () => {
+    const res = await rawRequest('PUT', '/v1/apps/notes/notes/huge-declared', {
+      Authorization: `Bearer ${ADMIN}`,
+      'Content-Type': 'application/json',
+      'Content-Length': String(100 * 1024 * 1024),
+    });
+    assert.equal(res.status, 413);
+    assert.equal(res.headers.connection, 'close');
+    assert.match(res.body, /Payload too large/);
+  });
+
+  it('sends security headers, and forbids framing only for the console', async () => {
+    const consolePage = await fetch(`${base}/`);
+    assert.equal(consolePage.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(consolePage.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(consolePage.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
+    assert.equal(consolePage.headers.get('x-frame-options'), 'DENY');
+
+    const hosted = await fetch(`${base}/apps/notes/`);
+    assert.equal(hosted.status, 200);
+    assert.equal(hosted.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(hosted.headers.get('content-security-policy'), null);
+
+    const api = await fetch(`${base}/health`);
+    assert.equal(api.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  it('answers HEAD for the console and hosted files without a body', async () => {
+    for (const target of ['/', '/apps/notes/', '/health']) {
+      const res = await fetch(`${base}${target}`, { method: 'HEAD' });
+      assert.equal(res.status, 200, target);
+      assert.ok(Number(res.headers.get('content-length')) > 0, target);
+      assert.equal(await res.text(), '', target);
+    }
+  });
+
+  it('treats a weak If-None-Match validator as matching', async () => {
+    const pull = await jfetch('/v1/apps/notes/notes/n1', { token: APP_TOKEN });
+    assert.ok(pull.etag);
+    const weak = await jfetch('/v1/apps/notes/notes/n1', {
+      token: APP_TOKEN,
+      headers: { 'If-None-Match': `W/${pull.etag}` },
+    });
+    assert.equal(weak.status, 304);
+  });
+});
+
+describe('hub lifecycle', () => {
+  it('reports server errors after startup instead of swallowing them', async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tailhub-life-'));
+    const other = createHub({ dataDir: dir, adminToken: ADMIN, quiet: true });
+    await other.listen(0, '127.0.0.1');
+    const logged = t.mock.method(console, 'error', () => undefined);
+    try {
+      assert.equal(other.server.listenerCount('error'), 1);
+      other.server.emit('error', new Error('boom after listen'));
+      assert.equal(logged.mock.callCount(), 1);
+      assert.match(String(logged.mock.calls[0]?.arguments[1]), /boom after listen/);
+    } finally {
+      logged.mock.restore();
+      await other.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('closes while a request is in flight, and repeated close() shares one shutdown', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tailhub-life-'));
+    const other = createHub({ dataDir: dir, adminToken: ADMIN, quiet: true, shutdownGraceMs: 100 });
+    const { port } = await other.listen(0, '127.0.0.1');
+    const net = await import('node:net');
+    const socket = net.connect(port, '127.0.0.1');
+    socket.on('error', () => undefined);
+    await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+    // Headers plus half a body: the request stays active, not idle.
+    socket.write(
+      `PUT /v1/apps/x/y/z HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ${ADMIN}\r\n` +
+        'Content-Type: application/json\r\nContent-Length: 100\r\n\r\n{"payl'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const started = Date.now();
+    const first = other.close();
+    const second = other.close();
+    assert.equal(first, second);
+    await first;
+    assert.ok(Date.now() - started < 2000, 'close() waited too long for the active request');
+    socket.destroy();
+    await fs.rm(dir, { recursive: true, force: true });
   });
 });
 

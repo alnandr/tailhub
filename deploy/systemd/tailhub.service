@@ -12,6 +12,17 @@ After=network-online.target
 ExecStart=@EXEC_START@
 Restart=on-failure
 RestartSec=3
+# Owner-only files for anything the hub creates (the hub also sets explicit
+# modes; this covers logs and future files).
+UMask=0077
+NoNewPrivileges=yes
+# Stricter sandboxing. In a user unit these need unprivileged user namespaces
+# (PrivateUsers is implied), which some kernels disable — enable them if
+# `systemctl --user start tailhub` still works afterwards. Keep ReadWritePaths
+# in sync with TAILHUB_DATA_DIR.
+# PrivateTmp=yes
+# ProtectSystem=strict
+# ReadWritePaths=%h/.tailhub
 # Uncomment to override defaults (see `tailhub help`):
 # Environment=TAILHUB_PORT=4747
 # Environment=TAILHUB_DATA_DIR=%h/.tailhub

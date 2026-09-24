@@ -70,6 +70,14 @@ identity is attribution, not authorization — authorization is tokens.
   path traversal in static hosting is blocked by segment checks plus realpath
   containment, so a symlink under `www/` cannot be followed outside that
   directory (covered by tests, including encoded and backslash forms).
+- The console is served with `Content-Security-Policy: frame-ancestors 'none'`
+  and `X-Frame-Options: DENY`, so another site cannot frame the page where the
+  admin token is typed. All responses send `X-Content-Type-Options: nosniff`;
+  static files also send `Referrer-Policy: no-referrer`. Hosted apps stay
+  embeddable.
+- Request bodies with a `Content-Length` over `TAILHUB_MAX_REQUEST_BYTES` are
+  refused with 413 before any of the body is read, and the connection is
+  closed. Headers must arrive within 30 s and a whole request within 5 min.
 - Atomic writes; corrupt files are quarantined, never deleted.
 - Request logs contain method/path/status only — never tokens or payloads.
 - On POSIX the data dir is created and kept at mode `0700`, and every file

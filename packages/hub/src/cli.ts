@@ -55,7 +55,30 @@ async function start(config: HubConfig): Promise<void> {
     trustTailscaleHeaders: config.trustTailscaleHeaders,
     quiet: config.quiet,
   });
-  const { port, host } = await hub.listen(config.port, config.host);
+  let port: number;
+  let host: string;
+  try {
+    ({ port, host } = await hub.listen(config.port, config.host));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EADDRINUSE') {
+      console.error(
+        `Port ${config.port} on ${config.host} is already in use — is another hub already running? ` +
+          'Stop it, or set TAILHUB_PORT to a free port.'
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (code === 'EACCES') {
+      console.error(
+        `Not allowed to listen on ${config.host}:${config.port}. Ports below 1024 need extra ` +
+          'privileges; use the default 4747 or another high port.'
+      );
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  }
 
   console.log(`tailhub v${TAILHUB_VERSION}`);
   console.log(`  Listening: http://${host}:${port}`);
@@ -73,11 +96,20 @@ async function start(config: HubConfig): Promise<void> {
   console.log('  Expose over Tailscale (once, from an admin shell):');
   console.log(`    tailscale serve --bg --https=443 http://127.0.0.1:${port}`);
 
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) {
+      console.error('tailhub: already shutting down — in-flight requests are cut off after a few seconds.');
+      return;
+    }
+    shuttingDown = true;
     hub
       .close()
       .then(() => process.exit(0))
-      .catch(() => process.exit(1));
+      .catch((error: unknown) => {
+        console.error('tailhub: error while shutting down', error);
+        process.exit(1);
+      });
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

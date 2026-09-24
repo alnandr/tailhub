@@ -38,7 +38,7 @@ import {
   wwwDir,
   type AppManifest,
 } from './manifests.js';
-import { serveFile, serveStaticTree } from './static.js';
+import { NO_FRAMING_HEADERS, serveFile, serveStaticTree } from './static.js';
 import {
   ArtifactIdCollisionError,
   ArtifactStore,
@@ -64,6 +64,8 @@ export type HubOptions = {
   corsOrigins?: '*' | string[];
   trustTailscaleHeaders?: boolean;
   quiet?: boolean;
+  /** How long close() lets in-flight requests finish before cutting them off. */
+  shutdownGraceMs?: number;
 };
 
 export type Hub = {
@@ -71,8 +73,14 @@ export type Hub = {
   store: ArtifactStore;
   dataDir: string;
   listen(port: number, host: string): Promise<{ port: number; host: string }>;
+  /** Idempotent: repeated calls share one shutdown. */
   close(): Promise<void>;
 };
+
+const HEADERS_TIMEOUT_MS = 30_000;
+/** Generous enough for a max-size (25 MiB) upload from a phone on a slow link. */
+const REQUEST_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_SHUTDOWN_GRACE_MS = 3_000;
 
 class HttpProblem extends Error {
   constructor(
@@ -84,16 +92,29 @@ class HttpProblem extends Error {
   }
 }
 
-function sendJson(res: ServerResponse, status: number, value: unknown): void {
+function sendJson(
+  res: ServerResponse,
+  status: number,
+  value: unknown,
+  headers: Record<string, string> = {}
+): void {
   const body = JSON.stringify(value);
   res.writeHead(status, {
+    ...headers,
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
+    'X-Content-Type-Options': 'nosniff',
   });
   res.end(body);
 }
 
 async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
+  // Refuse a declared oversize body before reading any of it. The unread
+  // body is why the 413 response closes the connection (see the handler).
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new HttpProblem(413, 'Payload too large', `Request body exceeds ${maxBytes} bytes.`);
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -116,11 +137,12 @@ function makeEtag(record: StoredArtifact): string {
   return `"${record.revision}-${record.hash ? record.hash.slice(7, 19) : 'del'}"`;
 }
 
+/** If-None-Match uses weak comparison (RFC 9110 13.1.2): ignore `W/`. */
 function etagMatches(header: string | undefined, etag: string): boolean {
   if (!header) return false;
   return header
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^W\//, ''))
     .some((candidate) => candidate === etag || candidate === '*');
 }
 
@@ -594,7 +616,9 @@ export function createHub(options: HubOptions): Hub {
       return;
     }
 
-    if (url.pathname === '/health' && req.method === 'GET') {
+    const readMethod = req.method === 'GET' || req.method === 'HEAD';
+
+    if (url.pathname === '/health' && readMethod) {
       return sendJson(res, 200, { status: 'ok', name: TAILHUB_NAME, version: TAILHUB_VERSION });
     }
 
@@ -602,9 +626,12 @@ export function createHub(options: HubOptions): Hub {
       return handleApi(req, res, segments, url);
     }
 
-    if (req.method === 'GET') {
+    if (readMethod) {
       if (url.pathname === '/' || url.pathname === '/console') {
-        const ok = await serveFile(res, path.join(moduleDir, 'console.html'), 'text/html; charset=utf-8');
+        const ok = await serveFile(res, path.join(moduleDir, 'console.html'), {
+          contentType: 'text/html; charset=utf-8',
+          headers: NO_FRAMING_HEADERS,
+        });
         if (ok) return;
         throw new HttpProblem(404, 'Not found', 'Console asset missing from this build.');
       }
@@ -640,7 +667,10 @@ export function createHub(options: HubOptions): Hub {
     handle(req, res).catch((error: unknown) => {
       if (res.writableEnded) return;
       if (error instanceof HttpProblem) {
-        return sendJson(res, error.status, { error: error.errorLabel, message: error.message });
+        // After a 413 the rest of the body is unread; closing the connection
+        // stops Node from draining (reading) an oversized upload to reuse it.
+        const headers: Record<string, string> = error.status === 413 ? { Connection: 'close' } : {};
+        return sendJson(res, error.status, { error: error.errorLabel, message: error.message }, headers);
       }
       if (error instanceof CorruptArtifactError) {
         return sendJson(res, 422, { error: 'Corrupt artifact', message: error.message });
@@ -656,14 +686,25 @@ export function createHub(options: HubOptions): Hub {
     });
   });
 
+  server.headersTimeout = HEADERS_TIMEOUT_MS;
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
+
+  const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
+  let closing: Promise<void> | null = null;
+
   return {
     server,
     store,
     dataDir,
     listen(port: number, host: string) {
       return new Promise((resolve, reject) => {
-        server.once('error', reject);
+        const onStartupError = (error: Error) => reject(error);
+        server.once('error', onStartupError);
         server.listen(port, host, () => {
+          // The startup listener would otherwise swallow every later server
+          // error by rejecting an already-settled promise.
+          server.off('error', onStartupError);
+          server.on('error', (error) => console.error('tailhub: server error', error));
           const address = server.address();
           const boundPort = typeof address === 'object' && address ? address.port : port;
           resolve({ port: boundPort, host });
@@ -671,9 +712,20 @@ export function createHub(options: HubOptions): Hub {
       });
     },
     close() {
-      return new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
+      closing ??= new Promise<void>((resolve, reject) => {
+        const force = setTimeout(() => server.closeAllConnections(), shutdownGraceMs);
+        force.unref();
+        server.close((error) => {
+          clearTimeout(force);
+          if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+        server.closeIdleConnections();
       });
+      return closing;
     },
   };
 }

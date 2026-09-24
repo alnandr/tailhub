@@ -559,6 +559,119 @@ describe('static app hosting', () => {
   });
 });
 
+function rawRequest(
+  method: string,
+  rawPath: string,
+  requestHeaders: Record<string, string>
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(base);
+    const req = http.request(
+      { host: url.hostname, port: url.port, path: rawPath, method, headers: requestHeaders },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: data }));
+      }
+    );
+    req.on('error', reject);
+    // Send headers only: an oversize Content-Length must be refused unread.
+    req.flushHeaders();
+  });
+}
+
+describe('server behaviour', () => {
+  it('refuses an oversized Content-Length before reading the body', async () => {
+    const res = await rawRequest('PUT', '/v1/apps/notes/notes/huge-declared', {
+      Authorization: `Bearer ${ADMIN}`,
+      'Content-Type': 'application/json',
+      'Content-Length': String(100 * 1024 * 1024),
+    });
+    assert.equal(res.status, 413);
+    assert.equal(res.headers.connection, 'close');
+    assert.match(res.body, /Payload too large/);
+  });
+
+  it('sends security headers, and forbids framing only for the console', async () => {
+    const consolePage = await fetch(`${base}/`);
+    assert.equal(consolePage.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(consolePage.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(consolePage.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
+    assert.equal(consolePage.headers.get('x-frame-options'), 'DENY');
+
+    const hosted = await fetch(`${base}/apps/notes/`);
+    assert.equal(hosted.status, 200);
+    assert.equal(hosted.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(hosted.headers.get('content-security-policy'), null);
+
+    const api = await fetch(`${base}/health`);
+    assert.equal(api.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  it('answers HEAD for the console and hosted files without a body', async () => {
+    for (const target of ['/', '/apps/notes/', '/health']) {
+      const res = await fetch(`${base}${target}`, { method: 'HEAD' });
+      assert.equal(res.status, 200, target);
+      assert.ok(Number(res.headers.get('content-length')) > 0, target);
+      assert.equal(await res.text(), '', target);
+    }
+  });
+
+  it('treats a weak If-None-Match validator as matching', async () => {
+    const pull = await jfetch('/v1/apps/notes/notes/n1', { token: APP_TOKEN });
+    assert.ok(pull.etag);
+    const weak = await jfetch('/v1/apps/notes/notes/n1', {
+      token: APP_TOKEN,
+      headers: { 'If-None-Match': `W/${pull.etag}` },
+    });
+    assert.equal(weak.status, 304);
+  });
+});
+
+describe('hub lifecycle', () => {
+  it('reports server errors after startup instead of swallowing them', async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tailhub-life-'));
+    const other = createHub({ dataDir: dir, adminToken: ADMIN, quiet: true });
+    await other.listen(0, '127.0.0.1');
+    const logged = t.mock.method(console, 'error', () => undefined);
+    try {
+      assert.equal(other.server.listenerCount('error'), 1);
+      other.server.emit('error', new Error('boom after listen'));
+      assert.equal(logged.mock.callCount(), 1);
+      assert.match(String(logged.mock.calls[0]?.arguments[1]), /boom after listen/);
+    } finally {
+      logged.mock.restore();
+      await other.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('closes while a request is in flight, and repeated close() shares one shutdown', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tailhub-life-'));
+    const other = createHub({ dataDir: dir, adminToken: ADMIN, quiet: true, shutdownGraceMs: 100 });
+    const { port } = await other.listen(0, '127.0.0.1');
+    const net = await import('node:net');
+    const socket = net.connect(port, '127.0.0.1');
+    socket.on('error', () => undefined);
+    await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+    // Headers plus half a body: the request stays active, not idle.
+    socket.write(
+      `PUT /v1/apps/x/y/z HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ${ADMIN}\r\n` +
+        'Content-Type: application/json\r\nContent-Length: 100\r\n\r\n{"payl'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const started = Date.now();
+    const first = other.close();
+    const second = other.close();
+    assert.equal(first, second);
+    await first;
+    assert.ok(Date.now() - started < 2000, 'close() waited too long for the active request');
+    socket.destroy();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+});
+
 describe('corrupt artifacts', () => {
   it('returns 422 and quarantines an unparseable record', async () => {
     const dir = path.join(dataDir, 'data', 'notes', 'notes');

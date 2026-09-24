@@ -51,6 +51,17 @@ function storageRemove(key: string): void {
   }
 }
 
+/**
+ * Random id for devices and new artifacts. `crypto.randomUUID` only exists
+ * in secure contexts, so a hub opened over plain http (e.g. a raw 100.x
+ * tailnet address) lacks it; `getRandomValues` works everywhere.
+ */
+export function randomId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export type BrowserSyncState = ReturnType<typeof createBrowserSyncState>;
 
 /** Create the localStorage-backed settings/state helper for one app. */
@@ -71,7 +82,9 @@ export function createBrowserSyncState(app: string) {
   function readPending(): Record<string, PendingRecord> {
     try {
       const parsed = JSON.parse(storageGet(KEY_PENDING) ?? '{}') as unknown;
-      return parsed && typeof parsed === 'object' ? (parsed as Record<string, PendingRecord>) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, PendingRecord>)
+        : {};
     } catch {
       return {};
     }
@@ -107,10 +120,7 @@ export function createBrowserSyncState(app: string) {
     getOrCreateDeviceId(): string {
       let id = storageGet(KEY_DEVICE_ID);
       if (id && id.length >= 8) return id;
-      id =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      id = randomId();
       storageSet(KEY_DEVICE_ID, id);
       return id;
     },

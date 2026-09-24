@@ -1,5 +1,5 @@
 // Minimal offline shell: cache the app + SDK, network-first so updates land.
-const CACHE = 'tailnotes-v1';
+const CACHE = 'tailnotes-v2';
 const SHELL = ['.', 'index.html', 'manifest.webmanifest', '/sdk/tailhub-client.js', '/sdk/index.js', '/sdk/browser.js', '/sdk/crypto.js'];
 
 self.addEventListener('install', (event) => {
@@ -20,10 +20,15 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || url.pathname.startsWith('/v1/')) return;
   event.respondWith(
     fetch(event.request)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(event.request, copy));
-        return res;
+      .then(async (res) => {
+        // Only a successful response may replace the cached shell; on a hub
+        // error, serve the last good copy if there is one.
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy));
+          return res;
+        }
+        return (await caches.match(event.request)) || res;
       })
       .catch(() => caches.match(event.request))
   );

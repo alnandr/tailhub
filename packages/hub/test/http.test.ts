@@ -300,6 +300,45 @@ describe('app registration', () => {
   });
 });
 
+describe('app token revocation', () => {
+  it('revokes all app tokens for admins only, keeping the rest of the manifest', async () => {
+    const extraToken = 'revocable-app-token-00112233445566';
+    const registered = await jfetch('/v1/apps/revocable', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({
+        app: 'revocable',
+        name: 'Revocable',
+        collections: { tokens: {} },
+        tokens: [sha256Hex(extraToken)],
+        www: true,
+        launchUrl: 'https://kept.example.ts.net/',
+      }),
+    });
+    assert.equal(registered.status, 200);
+
+    // A collection named "tokens" is still listable.
+    const listed = await jfetch('/v1/apps/revocable/tokens', { token: extraToken });
+    assert.equal(listed.status, 200);
+    assert.deepEqual(listed.body.artifacts, []);
+
+    const byApp = await jfetch('/v1/apps/revocable/tokens', { method: 'DELETE', token: extraToken });
+    assert.equal(byApp.status, 403);
+
+    const revoked = await jfetch('/v1/apps/revocable/tokens', { method: 'DELETE', token: ADMIN });
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.revoked, 1);
+    assert.equal(revoked.body.app.tokenCount, 0);
+    assert.equal((await jfetch('/v1/apps/revocable', { token: extraToken })).status, 401);
+
+    // The hidden launchUrl survives: it becomes operative once www is off.
+    const stored = JSON.parse(await fs.readFile(path.join(dataDir, 'apps', 'revocable.json'), 'utf8'));
+    assert.equal(stored.launchUrl, 'https://kept.example.ts.net/');
+    assert.equal(stored.name, 'Revocable');
+    assert.deepEqual(stored.tokens, []);
+  });
+});
+
 describe('artifact push/pull', () => {
   it('pushes, pulls, and honors ETag/304', async () => {
     const push = await jfetch('/v1/apps/notes/notes/n1', {

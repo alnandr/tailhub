@@ -54,7 +54,9 @@ Top-level:
   refuses to go past the cap instead of saving a manifest the hub would
   ignore. A `PUT` that omits `tokens` keeps the digests already on disk —
   the console update form does this, because the API never echoes digests.
-  Sending `tokens` replaces them; `[]` revokes every app token.
+  Sending `tokens` replaces them; `[]` revokes every app token. The console's
+  **Revoke all app tokens** button (`DELETE /v1/apps/<app>/tokens`) does the
+  same without resending the manifest.
 - `www` — serve static files from `<dataDir>/apps/<app>/www/` at
   `/apps/<app>/` so the hub hosts the PWA itself.
 - `launchUrl` — absolute `http(s)://` URL to open for apps the hub doesn't

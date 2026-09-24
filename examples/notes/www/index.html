@@ -105,7 +105,7 @@
 
 <script type="module">
   import { TailhubError } from '/sdk/tailhub-client.js';
-  import { createBrowserSyncState, formatRelative } from '/sdk/browser.js';
+  import { createBrowserSyncState, formatRelative, randomId } from '/sdk/browser.js';
   import { sealPayload, openPayload } from '/sdk/crypto.js';
 
   const sync = createBrowserSyncState('notes');
@@ -115,8 +115,11 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[c]);
 
-  const passKey = 'tailnotes-passphrase';
-  const getPass = () => sessionStorage.getItem(passKey) || '';
+  // The passphrase lives in memory only: sessionStorage is readable by every
+  // app served from this hub origin. Clear what older versions stored there.
+  let passphrase = '';
+  sessionStorage.removeItem('tailnotes-passphrase');
+  const getPass = () => passphrase;
 
   let notes = [];        // ArtifactMeta[] from the hub
   let editing = null;    // { id, title, body, revision, encrypted }
@@ -156,7 +159,8 @@
         <input type="password" id="pass" value="${esc(getPass())}" autocomplete="off">
         <div class="hint">With a passphrase, note text is sealed before it leaves this
           device — the hub stores ciphertext. Titles stay readable so lists work.
-          Every device must use the same passphrase.</div>
+          Every device must use the same passphrase. It is kept in memory only, so
+          enter it again after reloading the page.</div>
         <div class="bar">
           <button class="save" id="ok">Done</button>
         </div>
@@ -166,7 +170,7 @@
     document.getElementById('ok').addEventListener('click', () => {
       sync.setToken(document.getElementById('tok').value);
       sync.setDeviceName(document.getElementById('dev').value);
-      sessionStorage.setItem(passKey, document.getElementById('pass').value);
+      passphrase = document.getElementById('pass').value;
       loadList();
     });
   }
@@ -201,7 +205,7 @@
       <div class="status" id="status"></div>`;
     bindHead();
     document.getElementById('new').addEventListener('click', () => {
-      editing = { id: crypto.randomUUID(), title: '', body: '', revision: 0 };
+      editing = { id: randomId(), title: '', body: '', revision: 0 };
       conflict = null;
       renderEditor();
     });
@@ -305,6 +309,10 @@
       setStatus('Saved · r' + result.artifact.revision);
     } catch (err) {
       if (err instanceof TailhubError && err.conflict && err.remote) {
+        // renderEditor() rebuilds the form from `editing`; keep what was typed
+        // so the text survives and "Keep mine" pushes it, not the old version.
+        editing.title = title;
+        editing.body = body;
         conflict = err.remote;
         renderEditor();
       } else {

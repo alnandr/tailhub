@@ -44,6 +44,7 @@ Errors are always `{ "error": "<label>", "message": "<human sentence>" }`.
 | `GET /v1/apps/:app` | admin or app | This app's manifest (public view). |
 | `PUT /v1/apps/:app` | admin | Register/replace the manifest. Body: manifest JSON. Omitting `tokens` keeps the digests already on disk; sending `tokens` (including `[]`) replaces them. |
 | `DELETE /v1/apps/:app` | admin | Unregister; stored artifacts are kept on disk. |
+| `DELETE /v1/apps/:app/tokens` | admin | Revoke every app token for the app; the rest of the manifest is kept. Response: `{ ok, revoked, app }`. (Only `DELETE` is routed here, so a collection named `tokens` still lists normally.) |
 | `GET /apps/:app/*` | none | Static app files when the manifest sets `www: true`. |
 
 ### Artifacts

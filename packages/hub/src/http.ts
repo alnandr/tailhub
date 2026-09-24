@@ -376,6 +376,18 @@ export function createHub(options: HubOptions): Hub {
       );
     }
 
+    // DELETE /v1/apps/:app/tokens — revoke every app token, keeping the rest of
+    // the manifest (including a launchUrl the public view hides). Collection
+    // routes at this depth are GET-only, so a collection named "tokens" is
+    // unaffected.
+    if (segments.length === 4 && segments[3] === 'tokens' && req.method === 'DELETE') {
+      requireAdmin(auth);
+      const revoked = manifest.tokens?.length ?? 0;
+      const updated: AppManifest = { ...manifest, tokens: [] };
+      await saveManifest(dataDir, updated);
+      return sendJson(res, 200, { ok: true, revoked, app: publicManifest(updated) });
+    }
+
     // /v1/apps/:app/bundle
     if (segments.length === 4 && segments[3] === 'bundle') {
       if (req.method === 'GET') {

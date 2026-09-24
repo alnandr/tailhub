@@ -151,8 +151,8 @@ await hub.push('notes', id, { payload: { body }, baseRevision: 0, title: 'Grocer
 const result = await hub.pull('notes', id, { etag: lastEtag });
 if (!result.notModified) render(result.record);
 
-// end-to-end encrypted (hub sees ciphertext only)
-const sealed = await sealPayload({ body }, passphrase);
+// end-to-end encrypted (hub sees ciphertext only), bound to this artifact
+const sealed = await sealPayload({ body }, passphrase, { app: 'notes', collection: 'notes', id });
 await hub.push('notes', id, { payload: sealed.payload, encryption: sealed.encryption, baseRevision: rev });
 ```
 

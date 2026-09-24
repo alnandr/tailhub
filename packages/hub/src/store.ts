@@ -28,7 +28,8 @@ import { atomicWriteJson, ensureDir, isNotFound, quarantineFile } from './fsjson
 import { sanitizeForFilename } from './ids.js';
 
 export type EncryptionMeta = {
-  v: 1;
+  /** 1: unbound. 2: client bound the ciphertext to app/collection/id. */
+  v: 1 | 2;
   algo: string;
   kdf: string;
   iterations: number;

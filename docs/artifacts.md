@@ -133,12 +133,12 @@ revision) and gives every private app rollback without writing any code.
 
 ## End-to-end encryption
 
-The SDK's `sealPayload(payload, passphrase)` produces a ciphertext payload
-plus an envelope:
+The SDK's `sealPayload(payload, passphrase, { app, collection, id })`
+produces a ciphertext payload plus an envelope:
 
 ```json
 "encryption": {
-  "v": 1, "algo": "AES-GCM-256", "kdf": "PBKDF2-SHA-256",
+  "v": 2, "algo": "AES-GCM-256", "kdf": "PBKDF2-SHA-256",
   "iterations": 310000, "salt": "<b64>", "iv": "<b64>"
 }
 ```
@@ -146,6 +146,17 @@ plus an envelope:
 The hub stores both verbatim and never sees the passphrase. `openPayload`
 reverses it on any device with the same passphrase. Collections can make this
 mandatory with `encryption: "required"`.
+
+Passing the artifact's `{ app, collection, id }` seals a **v2** envelope: the
+ciphertext is authenticated together with that address, so a hub cannot move
+it onto another artifact, and the passphrase is Unicode-normalized (NFC) so it
+derives the same key on every platform. Open it with the same context:
+`openPayload(record, passphrase, { context: { app, collection, id } })`. Add
+`requireBound: true` to refuse **v1** envelopes (sealed without a context,
+which remain supported for existing data) so a hub cannot downgrade an
+artifact to the unbound format. `openPayload` also refuses envelopes whose
+iteration count falls outside 100,000–2,000,000, or whose salt or IV has the
+wrong size, before doing any key derivation.
 
 ## On-disk layout
 

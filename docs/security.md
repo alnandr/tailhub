@@ -44,6 +44,14 @@ For data that should be unreadable even on the hub disk, the SDK seals
 payloads client-side: PBKDF2-SHA-256 (310k iterations) → AES-256-GCM, random
 salt/IV per write, WebCrypto only. The passphrase never leaves the device.
 Collections can set `encryption: "required"` so the hub refuses plaintext.
+
+The client does not trust the envelope a hub returns: `openPayload` refuses
+iteration counts outside 100,000–2,000,000 and wrong-sized salts or IVs
+before deriving a key, so a hostile hub cannot stall a device with an
+enormous PBKDF2 count. Sealing with the artifact's `{ app, collection, id }`
+(v2 envelope) authenticates that address with the ciphertext, so a hub cannot
+swap sealed payloads between artifacts; open with `requireBound: true` to
+refuse the older unbound v1 format.
 Artifact **titles stay plaintext** (they are UX metadata) — apps handling
 sensitive titles should put them in the payload and push a generic title.
 

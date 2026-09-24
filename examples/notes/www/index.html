@@ -123,6 +123,8 @@
   let conflict = null;   // remote meta on 409
 
   function client() { return sync.createClient(); }
+  // Binds sealed notes to their address so the hub cannot swap ciphertexts.
+  const noteContext = (id) => ({ app: 'notes', collection: 'notes', id });
 
   function head(sub) {
     return `<header class="top">
@@ -214,7 +216,7 @@
       const record = result.record;
       let body = '';
       try {
-        const payload = await openPayload(record, getPass());
+        const payload = await openPayload(record, getPass(), { context: noteContext(id) });
         body = payload && typeof payload === 'object' ? String(payload.body ?? '') : '';
       } catch (err) {
         renderSettings(err.message);
@@ -284,7 +286,7 @@
     setStatus('Saving…');
     try {
       const pass = getPass();
-      const sealed = pass ? await sealPayload({ body }, pass) : null;
+      const sealed = pass ? await sealPayload({ body }, pass, noteContext(editing.id)) : null;
       const result = await client().push('notes', editing.id, {
         title,
         payload: sealed ? sealed.payload : { body },

@@ -7,7 +7,7 @@ React Native. Also served by every hub at `/sdk/tailhub-client.js`, so PWAs
 can use it without a bundler.
 
 ```js
-import { TailhubClient, sealPayload } from '@tailhub/client';
+import { TailhubClient, sealPayload, openPayload } from '@tailhub/client';
 
 const hub = new TailhubClient({
   baseUrl: 'https://desktop.tailnet.ts.net',
@@ -23,9 +23,12 @@ await hub.push('notes', id, { payload: { body }, baseRevision: 0, title: 'Grocer
 const result = await hub.pull('notes', id, { etag: lastEtag });
 if (!result.notModified) render(result.record);
 
-// end-to-end encrypted (hub sees ciphertext only)
-const sealed = await sealPayload({ body }, passphrase);
+// end-to-end encrypted (hub sees ciphertext only), bound to this artifact
+const context = { app: 'notes', collection: 'notes', id };
+const sealed = await sealPayload({ body }, passphrase, context);
 await hub.push('notes', id, { payload: sealed.payload, encryption: sealed.encryption, baseRevision: rev });
+const pulled = await hub.pull('notes', id);
+if (!pulled.notModified) await openPayload(pulled.record, passphrase, { context });
 ```
 
 Entry points:
@@ -33,7 +36,9 @@ Entry points:
 - `@tailhub/client` — `TailhubClient` (push/pull/list/history/restore/bundles),
   `TailhubError` with conflict metadata, retry helpers, token utilities
 - `@tailhub/client/crypto` — `sealPayload`/`openPayload` passphrase E2E
-  encryption (PBKDF2 + AES-256-GCM)
+  encryption (PBKDF2 + AES-256-GCM). Pass `{ app, collection, id }` to bind
+  the ciphertext to its artifact (v2 envelope); `requireBound: true` on open
+  refuses unbound v1 envelopes.
 - `@tailhub/client/browser` — localStorage plumbing a PWA wants: hub
   URL/token settings, device identity, revision/etag tracking, pending-push
   queue, sync health

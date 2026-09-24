@@ -131,7 +131,7 @@ function validateEncryptionMeta(value: unknown): EncryptionMeta | null {
   }
   const v = value as Record<string, unknown>;
   if (
-    v.v !== 1 ||
+    (v.v !== 1 && v.v !== 2) ||
     typeof v.algo !== 'string' ||
     v.algo.length > 32 ||
     typeof v.kdf !== 'string' ||
@@ -147,7 +147,7 @@ function validateEncryptionMeta(value: unknown): EncryptionMeta | null {
     throw new HttpProblem(400, 'Invalid encryption', 'encryption envelope has an invalid shape.');
   }
   return {
-    v: 1,
+    v: v.v as 1 | 2,
     algo: v.algo,
     kdf: v.kdf,
     iterations: v.iterations as number,

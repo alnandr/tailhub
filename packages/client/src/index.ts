@@ -16,7 +16,8 @@ export const CLIENT_VERSION = '0.1.0';
 
 /** Envelope describing how an end-to-end encrypted payload was sealed. */
 export type EncryptionMeta = {
-  v: 1;
+  /** 1: unbound. 2: bound to app/collection/id via AES-GCM additional data. */
+  v: 1 | 2;
   algo: string;
   kdf: string;
   iterations: number;
@@ -539,5 +540,11 @@ export class TailhubClient {
   }
 }
 
-export { sealPayload, openPayload, PBKDF2_ITERATIONS } from './crypto.js';
-export type { SealedPayload } from './crypto.js';
+export {
+  sealPayload,
+  openPayload,
+  PBKDF2_ITERATIONS,
+  MIN_PBKDF2_ITERATIONS,
+  MAX_PBKDF2_ITERATIONS,
+} from './crypto.js';
+export type { SealedPayload, SealContext, OpenOptions } from './crypto.js';

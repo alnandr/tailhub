@@ -361,6 +361,28 @@ describe('artifact push/pull', () => {
     assert.equal(noSealAllowed.status, 400);
   });
 
+  it('accepts bound (v2) envelopes and rejects unknown versions', async () => {
+    const envelope = {
+      algo: 'AES-GCM-256', kdf: 'PBKDF2-SHA-256',
+      iterations: 310000, salt: 'c2FsdA==', iv: 'aXZpdml2aXZp',
+    };
+    const v2 = await jfetch('/v1/apps/notes/sealed/bound1', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: 'Y2lwaGVy', encryption: { v: 2, ...envelope }, baseRevision: 0 }),
+    });
+    assert.equal(v2.status, 200);
+    const read = await jfetch('/v1/apps/notes/sealed/bound1', { token: APP_TOKEN });
+    assert.equal(read.body.encryption.v, 2);
+
+    const v3 = await jfetch('/v1/apps/notes/sealed/bound2', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: 'Y2lwaGVy', encryption: { v: 3, ...envelope }, baseRevision: 0 }),
+    });
+    assert.equal(v3.status, 400);
+  });
+
   it('413s payloads over the collection limit', async () => {
     const big = await jfetch('/v1/apps/notes/notes/huge', {
       method: 'PUT',

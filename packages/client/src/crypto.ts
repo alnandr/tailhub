@@ -5,7 +5,7 @@
  * ciphertext — metadata (title, revision, timestamps, size) stays visible so
  * the hub console and sync logic keep working, but the content itself is
  * unreadable without the passphrase. Uses WebCrypto only: works in browsers,
- * Node >= 20, and React Native with a WebCrypto polyfill.
+ * Node >= 22, and React Native with a WebCrypto polyfill.
  *
  * Envelope: PBKDF2-SHA-256 (310k iterations) -> AES-256-GCM over the UTF-8
  * JSON serialization of the payload. Salt 16 bytes, IV 12 bytes, random per

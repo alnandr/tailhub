@@ -4,19 +4,25 @@ name: Release
 # packages to npm (with provenance), creates a GitHub Release, and pushes a
 # container image to GHCR. Requires the NPM_TOKEN repository secret (an npm
 # granular access token with publish rights); GHCR uses the built-in token.
+#
+# Prerelease tags (anything with a "-", e.g. v0.2.0-rc.1) publish to the npm
+# "next" dist-tag and never move the "latest" npm tag or image tag.
 
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
-  id-token: write
-  packages: write
+  contents: read
 
 jobs:
   npm-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create
+      id-token: write # npm provenance
+    env:
+      NPM_DIST_TAG: ${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,22 +35,32 @@ jobs:
       - run: npm run build
       - run: npm test
       - name: Publish @tailhub/client
-        run: npm publish -w @tailhub/client
+        run: npm publish -w @tailhub/client --tag "$NPM_DIST_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish tailhub
-        run: npm publish -w tailhub
+        run: npm publish -w tailhub --tag "$NPM_DIST_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes
+        run: |
+          if [[ "$NPM_DIST_TAG" == "next" ]]; then
+            gh release create "${GITHUB_REF_NAME}" --generate-notes --prerelease
+          else
+            gh release create "${GITHUB_REF_NAME}" --generate-notes
+          fi
 
   docker-image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
     steps:
       - uses: actions/checkout@v4
+      # arm64 for Raspberry Pi / NAS hubs.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -58,10 +74,11 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/tailhub
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
       - uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

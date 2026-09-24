@@ -25,7 +25,11 @@ ENV NODE_ENV=production \
     TAILHUB_PORT=4747 \
     TAILHUB_DATA_DIR=/data
 COPY --from=build /src/packages/hub/dist /app
-RUN mkdir -p /data && chown node:node /data
+# dist/ is ES modules; without a package.json declaring that, Node only runs
+# them through syntax auto-detection (off in Node 20 or with
+# --no-experimental-detect-module).
+RUN printf '{"type":"module"}\n' > /app/package.json && \
+    mkdir -p /data && chown node:node /data
 VOLUME /data
 EXPOSE 4747
 USER node

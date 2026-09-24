@@ -1,7 +1,7 @@
 /**
  * @tailhub/client — universal client for a Tailhub artifact sync hub.
  *
- * Works anywhere `fetch` and WebCrypto exist: browsers, Node >= 20, and
+ * Works anywhere `fetch` and WebCrypto exist: browsers, Node >= 22, and
  * React Native. Zero dependencies. The hub stores opaque "artifacts" —
  * app-defined JSON payloads with revisions, history, and tombstones — on a
  * machine the user controls, reachable over their Tailscale network.

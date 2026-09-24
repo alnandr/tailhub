@@ -183,6 +183,25 @@ describe('ArtifactStore corruption handling', () => {
     // The colliding file is still the original record, not quarantined.
     assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).id, 'aB');
   });
+
+  it('applies the id check to history reads', async () => {
+    const created = await store.put(input('Hx', { x: 1 }, 0), {}, LIMITS);
+    assert.ok(created.ok);
+    const file = path.join(
+      root, `case-${n}`, 'data', 'demo', 'items', '.history', 'Hx', 'r000000001.json'
+    );
+    const raw = JSON.parse(await fs.readFile(file, 'utf8')) as { id: string };
+    raw.id = 'hX';
+    await fs.writeFile(file, JSON.stringify(raw), 'utf8');
+
+    await assert.rejects(() => store.history('demo', 'items', 'Hx'), ArtifactIdCollisionError);
+    await assert.rejects(
+      () => store.historyRevision('demo', 'items', 'Hx', 1),
+      ArtifactIdCollisionError
+    );
+    // Left in place for the stored id rather than quarantined.
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).id, 'hX');
+  });
 });
 
 describe('ArtifactStore bundles', () => {

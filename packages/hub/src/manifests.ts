@@ -14,7 +14,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { atomicWriteJson, isNotFound } from './fsjson.js';
-import { APP_PATTERN, COLLECTION_PATTERN, RESERVED_COLLECTIONS } from './ids.js';
+import {
+  APP_PATTERN,
+  COLLECTION_PATTERN,
+  RESERVED_COLLECTIONS,
+  isValidAppName,
+  isWindowsDeviceName,
+} from './ids.js';
 
 export type EncryptionPolicy = 'none' | 'optional' | 'required';
 
@@ -103,6 +109,9 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
   if (!APP_PATTERN.test(app)) {
     return invalid('Manifest "app" must be 1-64 chars of lowercase a-z, 0-9, or hyphen.');
   }
+  if (isWindowsDeviceName(app)) {
+    return invalid(`App name "${app}" is a reserved Windows device name.`);
+  }
   if (expectedApp && app !== expectedApp) {
     return invalid(`Manifest app "${app}" does not match the URL app "${expectedApp}".`);
   }
@@ -146,6 +155,9 @@ export function validateManifest(value: unknown, expectedApp?: string): Manifest
     }
     if (RESERVED_COLLECTIONS.has(collection)) {
       return invalid(`Collection name "${collection}" is reserved.`);
+    }
+    if (isWindowsDeviceName(collection)) {
+      return invalid(`Collection name "${collection}" is a reserved Windows device name.`);
     }
     if (typeof policyRaw !== 'object' || policyRaw === null || Array.isArray(policyRaw)) {
       return invalid(`Collection "${collection}" policy must be an object (use {} for defaults).`);
@@ -260,7 +272,7 @@ export function appendAppTokenDigest(
 }
 
 export async function loadManifest(dataDir: string, app: string): Promise<AppManifest | null> {
-  if (!APP_PATTERN.test(app)) return null;
+  if (!isValidAppName(app)) return null;
   let raw: string;
   try {
     raw = await fs.readFile(manifestPath(dataDir, app), 'utf8');
@@ -309,7 +321,7 @@ export async function listManifests(dataDir: string): Promise<AppManifest[]> {
   for (const name of names) {
     if (!name.endsWith('.json')) continue;
     const app = name.slice(0, -'.json'.length);
-    if (!APP_PATTERN.test(app)) continue;
+    if (!isValidAppName(app)) continue;
     const manifest = await loadManifest(dataDir, app);
     if (manifest) manifests.push(manifest);
   }

@@ -146,6 +146,34 @@ function etagMatches(header: string | undefined, etag: string): boolean {
     .some((candidate) => candidate === etag || candidate === '*');
 }
 
+/**
+ * Metadata fields are shown in consoles, apps, and logs: collapse control
+ * characters (C0 and DEL) to spaces, trim, cap, and drop empty results.
+ */
+function cleanText(value: string, maxLength: number): string | undefined {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, maxLength).trim();
+  return cleaned || undefined;
+}
+
+const ISO_DATE_TIME =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+/** Device clocks drift; beyond this a future updatedAt is treated as bogus. */
+const MAX_UPDATED_AT_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Lists sort by updatedAt, so an arbitrary client string could pin or bury
+ * entries. Keep only ISO 8601 date-times not far in the future, stored in
+ * UTC `toISOString()` form; anything else falls back to the hub's clock.
+ */
+function normalizeUpdatedAt(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 64 || !ISO_DATE_TIME.test(value.trim())) {
+    return undefined;
+  }
+  const time = Date.parse(value.trim());
+  if (!Number.isFinite(time) || time > Date.now() + MAX_UPDATED_AT_SKEW_MS) return undefined;
+  return new Date(time).toISOString();
+}
+
 function validateEncryptionMeta(value: unknown): EncryptionMeta | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'object' || Array.isArray(value)) {
@@ -204,13 +232,10 @@ function validatePushBody(value: unknown): PushBody {
       'Push body must include an integer "baseRevision" (0 when creating).'
     );
   }
-  const title = typeof v.title === 'string' ? v.title.slice(0, 200) : 'Untitled';
-  const updatedAt =
-    typeof v.updatedAt === 'string' && v.updatedAt.length <= 64 ? v.updatedAt : undefined;
-  const deviceId =
-    typeof v.deviceId === 'string' && v.deviceId ? v.deviceId.slice(0, 128) : undefined;
-  const deviceName =
-    typeof v.deviceName === 'string' && v.deviceName ? v.deviceName.slice(0, 128) : undefined;
+  const title = typeof v.title === 'string' ? cleanText(v.title, 200) ?? '' : 'Untitled';
+  const updatedAt = normalizeUpdatedAt(v.updatedAt);
+  const deviceId = typeof v.deviceId === 'string' ? cleanText(v.deviceId, 128) : undefined;
+  const deviceName = typeof v.deviceName === 'string' ? cleanText(v.deviceName, 128) : undefined;
   return {
     title,
     updatedAt,
@@ -225,8 +250,8 @@ function validatePushBody(value: unknown): PushBody {
 
 function headerString(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
-  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 128);
-  if (Array.isArray(value) && value[0]) return String(value[0]).trim().slice(0, 128);
+  if (typeof value === 'string') return cleanText(value, 128);
+  if (Array.isArray(value) && value[0]) return cleanText(String(value[0]), 128);
   return undefined;
 }
 
@@ -235,7 +260,10 @@ export function createHub(options: HubOptions): Hub {
   const maxRequestBytes = options.maxRequestBytes ?? 25 * 1024 * 1024;
   const defaultMaxArtifactBytes = options.defaultMaxArtifactBytes ?? 10 * 1024 * 1024;
   const defaultHistoryKeep = options.defaultHistoryKeep ?? 20;
-  const corsOrigins = options.corsOrigins ?? '*';
+  const corsOrigins =
+    options.corsOrigins === undefined || options.corsOrigins === '*'
+      ? '*'
+      : options.corsOrigins.map((origin) => origin.trim().replace(/\/+$/, ''));
   const trustTailscaleHeaders = options.trustTailscaleHeaders === true;
   const quiet = options.quiet === true;
   const adminTokenHash = sha256Hex(options.adminToken);

@@ -35,6 +35,26 @@ async function modeOf(target: string): Promise<number> {
   return (await fs.stat(target)).mode & 0o777;
 }
 
+describe('environment parsing', () => {
+  it('strips trailing slashes from CORS origins', () => {
+    const config = loadConfigFromEnv({
+      TAILHUB_CORS_ORIGINS: 'https://a.example/, https://b.example//,https://c.example',
+    });
+    assert.deepEqual(config.corsOrigins, [
+      'https://a.example',
+      'https://b.example',
+      'https://c.example',
+    ]);
+    assert.equal(loadConfigFromEnv({ TAILHUB_CORS_ORIGINS: '*' }).corsOrigins, '*');
+  });
+
+  it('falls back to the default port outside 1-65535', () => {
+    assert.equal(loadConfigFromEnv({ TAILHUB_PORT: '99999' }).port, 4747);
+    assert.equal(loadConfigFromEnv({ TAILHUB_PORT: '0' }).port, 4747);
+    assert.equal(loadConfigFromEnv({ TAILHUB_PORT: '8080' }).port, 8080);
+  });
+});
+
 describe('data dir and admin token permissions', () => {
   it('creates the data dir and a generated token owner-only', posixOnly, async () => {
     const dataDir = freshDir();

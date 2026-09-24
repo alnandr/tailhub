@@ -404,6 +404,85 @@ describe('artifact push/pull', () => {
     );
   });
 
+  it('rejects Windows device names as app, collection, and artifact ids', async () => {
+    for (const id of ['con', 'NUL', 'com1', 'lpt9.backup', 'Aux.json']) {
+      const res = await jfetch(`/v1/apps/notes/notes/${id}`, {
+        method: 'PUT',
+        token: APP_TOKEN,
+        body: JSON.stringify({ payload: { x: 1 }, baseRevision: 0 }),
+      });
+      assert.equal(res.status, 400, id);
+    }
+    const app = await jfetch('/v1/apps/prn', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'prn', collections: { data: {} } }),
+    });
+    assert.equal(app.status, 400);
+    const collection = await jfetch('/v1/apps/devices', {
+      method: 'PUT',
+      token: ADMIN,
+      body: JSON.stringify({ app: 'devices', collections: { com3: {} } }),
+    });
+    assert.equal(collection.status, 400);
+    assert.match(collection.body.message, /Windows device name/);
+    // Names that merely start with a device name are fine.
+    const fine = await jfetch('/v1/apps/notes/notes/console-log', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ payload: { x: 1 }, baseRevision: 0 }),
+    });
+    assert.equal(fine.status, 200);
+  });
+
+  it('strips control characters from stored metadata', async () => {
+    const res = await jfetch('/v1/apps/notes/notes/ctrl1', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({
+        title: 'line one\nline\u0000two\u007f',
+        deviceId: '\u0007dev-9',
+        deviceName: 'phone\r\n',
+        payload: { x: 1 },
+        baseRevision: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.artifact.title, 'line one line two');
+    assert.equal(res.body.artifact.deviceId, 'dev-9');
+    assert.equal(res.body.artifact.deviceName, 'phone');
+
+    const onlyControl = await jfetch('/v1/apps/notes/notes/ctrl2', {
+      method: 'PUT',
+      token: APP_TOKEN,
+      body: JSON.stringify({ title: '\n\t', payload: {}, baseRevision: 0 }),
+    });
+    assert.equal(onlyControl.body.artifact.title, 'Untitled');
+  });
+
+  it('keeps only sane ISO updatedAt values, normalized to UTC', async () => {
+    const push = async (id: string, updatedAt: unknown) =>
+      (
+        await jfetch(`/v1/apps/notes/notes/${id}`, {
+          method: 'PUT',
+          token: APP_TOKEN,
+          body: JSON.stringify({ updatedAt, payload: {}, baseRevision: 0 }),
+        })
+      ).body.artifact;
+
+    const offset = await push('when1', '2026-07-20T21:16:50.853+02:00');
+    assert.equal(offset.updatedAt, '2026-07-20T19:16:50.853Z');
+
+    for (const [id, bogus] of [
+      ['when2', 'zzz-pinned-to-top'],
+      ['when3', '9999-12-31T00:00:00Z'],
+      ['when4', '1'],
+    ] as const) {
+      const artifact = await push(id, bogus);
+      assert.equal(artifact.updatedAt, artifact.receivedAt, `${bogus} should fall back to hub time`);
+    }
+  });
+
   it('does not treat the inherited "constructor" key as a declared collection', async () => {
     // The allowlist is a bracket lookup on manifest.collections; a plain {} would
     // let "constructor" (an all-lowercase Object.prototype key that passes the

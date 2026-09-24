@@ -132,6 +132,18 @@ export class ArtifactIdCollisionError extends Error {
   }
 }
 
+/**
+ * Current and history files are addressed by id; a record holding another id
+ * means two case-twin ids share one file on a case-insensitive filesystem.
+ * Never quarantine it: it may be valid data for the stored id.
+ */
+function assertSameId(record: StoredArtifact, id: string): void {
+  if (record.id === id) return;
+  const error = new ArtifactIdCollisionError(record.id, id);
+  console.error('tailhub: artifact id collision', error.message);
+  throw error;
+}
+
 export function toMeta(record: StoredArtifact): ArtifactMeta {
   return {
     app: record.app,
@@ -253,13 +265,7 @@ export class ArtifactStore {
       console.error('tailhub: quarantined corrupt artifact', path.basename(file), error);
       throw new CorruptArtifactError();
     }
-    if (record.id !== id) {
-      // Do not quarantine: the record may be valid data for a different id
-      // (case-twin ids collide on case-insensitive filesystems).
-      const error = new ArtifactIdCollisionError(record.id, id);
-      console.error('tailhub: artifact id collision', error.message);
-      throw error;
-    }
+    assertSameId(record, id);
     return record;
   }
 
@@ -462,11 +468,15 @@ export class ArtifactStore {
       const metas: ArtifactMeta[] = [];
       for (const name of names.filter((n) => HISTORY_FILE_PATTERN.test(n)).sort().reverse()) {
         const file = path.join(dir, name);
+        let record: StoredArtifact;
         try {
-          metas.push(toMeta(parseStoredArtifact(await fs.readFile(file, 'utf8'), file)));
+          record = parseStoredArtifact(await fs.readFile(file, 'utf8'), file);
         } catch {
           await quarantineFile(file).catch(() => undefined);
+          continue;
         }
+        assertSameId(record, id);
+        metas.push(toMeta(record));
       }
       return metas;
     });
@@ -487,13 +497,16 @@ export class ArtifactStore {
         if (isNotFound(error)) return null;
         throw error;
       }
+      let record: StoredArtifact;
       try {
-        return parseStoredArtifact(raw, file);
+        record = parseStoredArtifact(raw, file);
       } catch (error) {
         await quarantineFile(file).catch(() => undefined);
         console.error('tailhub: quarantined corrupt artifact', path.basename(file), error);
         throw new CorruptArtifactError();
       }
+      assertSameId(record, id);
+      return record;
     });
   }
 

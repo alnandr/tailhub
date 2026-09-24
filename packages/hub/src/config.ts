@@ -36,25 +36,41 @@ export function defaultDataDir(): string {
   return path.join(os.homedir(), '.tailhub');
 }
 
-function intFromEnv(raw: string | undefined, fallback: number, min = 1): number {
+function intFromEnv(
+  raw: string | undefined,
+  fallback: number,
+  min = 1,
+  max = Number.MAX_SAFE_INTEGER
+): number {
   if (!raw?.trim()) return fallback;
   const value = Number(raw.trim());
-  return Number.isInteger(value) && value >= min ? value : fallback;
+  return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
 }
 
+/** Browsers send `Origin` without a trailing slash; match what they send. */
+function parseCorsOrigins(raw: string | undefined): '*' | string[] {
+  const cors = raw?.trim();
+  if (!cors || cors === '*') return '*';
+  return cors
+    .split(',')
+    .map((s) => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+/** Generated tokens are 64 hex chars; anything much shorter is guessable. */
+export const MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH = 32;
+
 export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): HubConfig {
-  const cors = env.TAILHUB_CORS_ORIGINS?.trim();
   const dataDirRaw = env.TAILHUB_DATA_DIR?.trim();
   return {
-    port: intFromEnv(env.TAILHUB_PORT, DEFAULT_PORT),
+    port: intFromEnv(env.TAILHUB_PORT, DEFAULT_PORT, 1, 65535),
     host: env.TAILHUB_HOST?.trim() || '127.0.0.1',
     dataDir: dataDirRaw ? path.resolve(dataDirRaw) : defaultDataDir(),
     adminToken: env.TAILHUB_TOKEN?.trim() || null,
     maxRequestBytes: intFromEnv(env.TAILHUB_MAX_REQUEST_BYTES, 25 * 1024 * 1024),
     defaultMaxArtifactBytes: intFromEnv(env.TAILHUB_MAX_ARTIFACT_BYTES, 10 * 1024 * 1024),
     defaultHistoryKeep: intFromEnv(env.TAILHUB_HISTORY_KEEP, 20, 0),
-    corsOrigins:
-      !cors || cors === '*' ? '*' : cors.split(',').map((s) => s.trim()).filter(Boolean),
+    corsOrigins: parseCorsOrigins(env.TAILHUB_CORS_ORIGINS),
     trustTailscaleHeaders: env.TAILHUB_TRUST_TAILSCALE_HEADERS === '1',
     quiet: env.TAILHUB_QUIET === '1',
   };

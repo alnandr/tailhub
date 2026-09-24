@@ -74,6 +74,12 @@ Responses: `200 { ok, created, artifact }` (+ `ETag`) · `409` conflict with
 `remote` metadata · `413` over the collection's `maxBytes` · `400` policy
 violations (e.g. collection requires encryption).
 
+`title` (200 chars) and the device fields (128 chars) are trimmed and capped,
+with control characters replaced by spaces. `updatedAt` is kept only when it
+is an ISO 8601 date-time no more than 24 hours ahead of the hub's clock, and
+is stored in UTC; otherwise the hub's receive time is used, so a client cannot
+pin entries to the top of a list with an arbitrary string.
+
 ### Bundles (whole-app export / import)
 
 | Route | Auth | Description |

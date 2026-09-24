@@ -10,6 +10,11 @@ Namespace: `app / collection / id`.
 - **collection** — same charset, e.g. `portfolios`, `notes` (`bundle` is reserved)
 - **id** — `[A-Za-z0-9._-]{1,128}`, no leading dot (UUIDs, slugs)
 
+None of the three may be a Windows device name (`con`, `prn`, `aux`, `nul`,
+`com1`–`com9`, `lpt1`–`lpt9`, in any case and with any extension such as
+`nul.json`). Those names cannot be files on Windows, so every hub refuses them
+to keep bundles portable between platforms.
+
 ## App manifests
 
 A hub only accepts artifacts for apps it has a **manifest** for — registering
@@ -173,6 +178,8 @@ wrong size, before doing any key derivation.
         .history/<id>/r000000002.json
 ```
 
-Writes are atomic (temp file + rename), all store operations serialize through
-one lock, and unparseable files are quarantined (renamed `*.corrupt-*`), never
-deleted. Plain JSON on your own disk — greppable, backupable, no database.
+Writes are atomic and durable (temp file, `fsync`, rename, then `fsync` of the
+directory), all store operations serialize through one lock, and unparseable
+files are quarantined (renamed `*.corrupt-*`), never deleted. On Linux and
+macOS the data dir is `0700` and every file `0600`. Plain JSON on your own
+disk — greppable, backupable, no database.

@@ -8,6 +8,7 @@ import { sha256Hex } from './auth.js';
 import {
   adminTokenPath,
   loadConfigFromEnv,
+  MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH,
   preparePrivateDataDir,
   resolveAdminToken,
   writeAdminTokenFile,
@@ -45,6 +46,13 @@ Expose over your tailnet (HTTPS + MagicDNS, run once):
 async function start(config: HubConfig): Promise<void> {
   await preparePrivateDataDir(config.dataDir);
   const { token, source } = await resolveAdminToken(config);
+  if (token.length < MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH) {
+    console.warn(
+      `tailhub: the admin token is only ${token.length} characters. Use at least ` +
+        `${MIN_RECOMMENDED_ADMIN_TOKEN_LENGTH} random characters — \`tailhub token rotate\` ` +
+        'generates one (unset TAILHUB_TOKEN first if you set it).'
+    );
+  }
   const hub = createHub({
     dataDir: config.dataDir,
     adminToken: token,

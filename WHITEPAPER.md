@@ -162,7 +162,7 @@ zero client configuration (`suggestHubUrl()` defaults to the page's origin).
 Tailhub is built to be *trustable by inspection*, because it asks to hold
 personal data.
 
-- **~1,500 lines of TypeScript, zero runtime dependencies.** The hub uses
+- **~2,500 lines of TypeScript, zero runtime dependencies.** The hub uses
   only Node's standard library. There is no framework, no database, no
   dependency tree to audit — the entire server can be read in one sitting.
 - **Plain JSON on disk.** Artifacts, manifests, and history live as files
@@ -203,7 +203,7 @@ portfolio-specific parts with the artifact model and shipped with:
   history, restore revisions, launch hosted apps), `tailhub` CLI (start,
   token management, scoped app-token minting).
 - **The SDK** — `@tailhub/client`: dependency-free, runs in browsers,
-  Node ≥ 20, and React Native; typed errors with conflict metadata; ETag
+  Node ≥ 22, and React Native; typed errors with conflict metadata; ETag
   polling; retry helpers; `crypto` and `browser` entry points (E2E sealing;
   localStorage plumbing for PWAs). Also served by every hub, so a PWA needs
   no bundler.

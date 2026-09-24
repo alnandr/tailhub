@@ -2,7 +2,7 @@
 
 Universal client SDK for a [Tailhub](https://www.npmjs.com/package/tailhub)
 artifact sync hub — the self-hosted backend for private, local-first apps on
-your Tailscale network. Dependency-free; runs in browsers, Node ≥ 20, and
+your Tailscale network. Dependency-free; runs in browsers, Node ≥ 22, and
 React Native. Also served by every hub at `/sdk/tailhub-client.js`, so PWAs
 can use it without a bundler.
 

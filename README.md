@@ -76,12 +76,12 @@ Every artifact gets, for free:
   browser SDK (`/sdk/tailhub-client.js`), so a single `tailscale serve`
   command publishes app + data + console on one HTTPS origin.
 
-The hub is a **zero-runtime-dependency** Node server (~1500 lines of
-TypeScript): auditable in one sitting, installable anywhere Node 20+ runs.
+The hub is a **zero-runtime-dependency** Node server (~2,500 lines of
+TypeScript): auditable in one sitting, installable anywhere Node 22+ runs.
 
 ## Quick start
 
-**npm** (Node ≥ 20; first publish pending — tag `v0.1.0` ships it, see
+**npm** (Node ≥ 22; first publish pending — tag `v0.1.0` ships it, see
 [RELEASING.md](RELEASING.md)):
 
 ```bash
@@ -156,7 +156,7 @@ const sealed = await sealPayload({ body }, passphrase, { app: 'notes', collectio
 await hub.push('notes', id, { payload: sealed.payload, encryption: sealed.encryption, baseRevision: rev });
 ```
 
-`@tailhub/client` is dependency-free and runs in browsers, Node ≥ 20, and
+`@tailhub/client` is dependency-free and runs in browsers, Node ≥ 22, and
 React Native. `@tailhub/client/browser` adds the localStorage plumbing a PWA
 wants (settings, device identity, revision/etag tracking, pending queue, sync
 health). `examples/notes` is a complete working app in one HTML file.
@@ -176,7 +176,7 @@ health). `examples/notes` is a complete working app in one HTML file.
 
 v0.1 — extracted, generalized, and covered by an automated test suite
 (conflict handling, tombstones, auth scoping, encryption policy, path
-traversal; CI on Linux/macOS/Windows × Node 20/22), running the patterns
+traversal; CI on Linux/macOS/Windows × Node 22/24), running the patterns
 proven in Bottomline.
 
 Planned next: change notifications (SSE) instead of polling · replaying
